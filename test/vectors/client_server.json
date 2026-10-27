@@ -1,0 +1,264 @@
+{
+  "about": "Shared vectors: what a client must produce, byte for byte, and what a backend must accept -- the integration guide's sections 1 to 3 (doc/integration_guide.md). test/client_server_vectors_test.dart holds the plugin to them; a backend can test itself against them too.",
+  "access_proof": [
+    {
+      "name": "a GET without a query",
+      "method": "GET",
+      "path": "/v1/account/me",
+      "body": null,
+      "bearer": "eyJhbGciOiJIUzI1NiIsImtpZCI6IjEifQ.eyJzdWIiOiJ2ZWN0b3IifQ.c2lnbmF0dXJl",
+      "installation_id": "11111111-2222-4333-8444-555555555555",
+      "nonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "timestamp": 1760000000,
+      "sent_body": "",
+      "proof_json": "{\"access_token_sha256\":\"1705b7e8d5b11e2612248ce57e4072748235ba8466adf5d1aa689694b13d0c69\",\"body_sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"installation_id\":\"11111111-2222-4333-8444-555555555555\",\"method\":\"GET\",\"nonce\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8\",\"path\":\"/v1/account/me\",\"query\":\"\",\"timestamp\":1760000000,\"version\":2}",
+      "proof": "eyJhY2Nlc3NfdG9rZW5fc2hhMjU2IjoiMTcwNWI3ZThkNWIxMWUyNjEyMjQ4Y2U1N2U0MDcyNzQ4MjM1YmE4NDY2YWRmNWQxYWE2ODk2OTRiMTNkMGM2OSIsImJvZHlfc2hhMjU2IjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImluc3RhbGxhdGlvbl9pZCI6IjExMTExMTExLTIyMjItNDMzMy04NDQ0LTU1NTU1NTU1NTU1NSIsIm1ldGhvZCI6IkdFVCIsIm5vbmNlIjoiQUFFQ0F3UUZCZ2NJQ1FvTERBME9EeEFSRWhNVUZSWVhHQmthR3h3ZEhoOCIsInBhdGgiOiIvdjEvYWNjb3VudC9tZSIsInF1ZXJ5IjoiIiwidGltZXN0YW1wIjoxNzYwMDAwMDAwLCJ2ZXJzaW9uIjoyfQ"
+    },
+    {
+      "name": "a GET with a query",
+      "method": "GET",
+      "path": "/v1/auth/approvals?limit=5&state=pending",
+      "body": null,
+      "bearer": "eyJhbGciOiJIUzI1NiIsImtpZCI6IjEifQ.eyJzdWIiOiJ2ZWN0b3IifQ.c2lnbmF0dXJl",
+      "installation_id": "11111111-2222-4333-8444-555555555555",
+      "nonce": "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8",
+      "timestamp": 1760000001,
+      "sent_body": "",
+      "proof_json": "{\"access_token_sha256\":\"1705b7e8d5b11e2612248ce57e4072748235ba8466adf5d1aa689694b13d0c69\",\"body_sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"installation_id\":\"11111111-2222-4333-8444-555555555555\",\"method\":\"GET\",\"nonce\":\"ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8\",\"path\":\"/v1/auth/approvals\",\"query\":\"limit=5&state=pending\",\"timestamp\":1760000001,\"version\":2}",
+      "proof": "eyJhY2Nlc3NfdG9rZW5fc2hhMjU2IjoiMTcwNWI3ZThkNWIxMWUyNjEyMjQ4Y2U1N2U0MDcyNzQ4MjM1YmE4NDY2YWRmNWQxYWE2ODk2OTRiMTNkMGM2OSIsImJvZHlfc2hhMjU2IjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImluc3RhbGxhdGlvbl9pZCI6IjExMTExMTExLTIyMjItNDMzMy04NDQ0LTU1NTU1NTU1NTU1NSIsIm1ldGhvZCI6IkdFVCIsIm5vbmNlIjoiSUNFaUl5UWxKaWNvS1NvckxDMHVMekF4TWpNME5UWTNPRGs2T3p3OVBqOCIsInBhdGgiOiIvdjEvYXV0aC9hcHByb3ZhbHMiLCJxdWVyeSI6ImxpbWl0PTUmc3RhdGU9cGVuZGluZyIsInRpbWVzdGFtcCI6MTc2MDAwMDAwMSwidmVyc2lvbiI6Mn0"
+    },
+    {
+      "name": "a POST whose body has text beyond ASCII, a slash and a quote",
+      "method": "POST",
+      "path": "/v1/account/transfer",
+      "body": {
+        "amount": 5,
+        "note": "café / €",
+        "quote": "\"x\""
+      },
+      "bearer": "eyJhbGciOiJIUzI1NiIsImtpZCI6IjEifQ.eyJzdWIiOiJ2ZWN0b3IifQ.c2lnbmF0dXJl",
+      "installation_id": "11111111-2222-4333-8444-555555555555",
+      "nonce": "QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8",
+      "timestamp": 1760000002,
+      "sent_body": "{\"amount\":5,\"note\":\"café / €\",\"quote\":\"\\\"x\\\"\"}",
+      "proof_json": "{\"access_token_sha256\":\"1705b7e8d5b11e2612248ce57e4072748235ba8466adf5d1aa689694b13d0c69\",\"body_sha256\":\"f5d6a1ba97ae61dda0a2fe5cddc9861f31ed49f04806c30cc1bfc122856c966b\",\"installation_id\":\"11111111-2222-4333-8444-555555555555\",\"method\":\"POST\",\"nonce\":\"QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8\",\"path\":\"/v1/account/transfer\",\"query\":\"\",\"timestamp\":1760000002,\"version\":2}",
+      "proof": "eyJhY2Nlc3NfdG9rZW5fc2hhMjU2IjoiMTcwNWI3ZThkNWIxMWUyNjEyMjQ4Y2U1N2U0MDcyNzQ4MjM1YmE4NDY2YWRmNWQxYWE2ODk2OTRiMTNkMGM2OSIsImJvZHlfc2hhMjU2IjoiZjVkNmExYmE5N2FlNjFkZGEwYTJmZTVjZGRjOTg2MWYzMWVkNDlmMDQ4MDZjMzBjYzFiZmMxMjI4NTZjOTY2YiIsImluc3RhbGxhdGlvbl9pZCI6IjExMTExMTExLTIyMjItNDMzMy04NDQ0LTU1NTU1NTU1NTU1NSIsIm1ldGhvZCI6IlBPU1QiLCJub25jZSI6IlFFRkNRMFJGUmtkSVNVcExURTFPVDFCUlVsTlVWVlpYV0ZsYVcxeGRYbDgiLCJwYXRoIjoiL3YxL2FjY291bnQvdHJhbnNmZXIiLCJxdWVyeSI6IiIsInRpbWVzdGFtcCI6MTc2MDAwMDAwMiwidmVyc2lvbiI6Mn0"
+    },
+    {
+      "name": "a POST with a query and an empty body",
+      "method": "POST",
+      "path": "/v1/business/runtime-baselines/0d4f6c1a-3b2e-4f5a-9c8d-7e6f5a4b3c2d/retire?dry_run=1",
+      "body": {},
+      "bearer": "eyJhbGciOiJIUzI1NiIsImtpZCI6IjEifQ.eyJzdWIiOiJ2ZWN0b3IifQ.c2lnbmF0dXJl",
+      "installation_id": "11111111-2222-4333-8444-555555555555",
+      "nonce": "YGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn8",
+      "timestamp": 1760000003,
+      "sent_body": "{}",
+      "proof_json": "{\"access_token_sha256\":\"1705b7e8d5b11e2612248ce57e4072748235ba8466adf5d1aa689694b13d0c69\",\"body_sha256\":\"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\",\"installation_id\":\"11111111-2222-4333-8444-555555555555\",\"method\":\"POST\",\"nonce\":\"YGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn8\",\"path\":\"/v1/business/runtime-baselines/0d4f6c1a-3b2e-4f5a-9c8d-7e6f5a4b3c2d/retire\",\"query\":\"dry_run=1\",\"timestamp\":1760000003,\"version\":2}",
+      "proof": "eyJhY2Nlc3NfdG9rZW5fc2hhMjU2IjoiMTcwNWI3ZThkNWIxMWUyNjEyMjQ4Y2U1N2U0MDcyNzQ4MjM1YmE4NDY2YWRmNWQxYWE2ODk2OTRiMTNkMGM2OSIsImJvZHlfc2hhMjU2IjoiNDQxMzZmYTM1NWIzNjc4YTExNDZhZDE2ZjdlODY0OWU5NGZiNGZjMjFmZTc3ZTgzMTBjMDYwZjYxY2FhZmY4YSIsImluc3RhbGxhdGlvbl9pZCI6IjExMTExMTExLTIyMjItNDMzMy04NDQ0LTU1NTU1NTU1NTU1NSIsIm1ldGhvZCI6IlBPU1QiLCJub25jZSI6IllHRmlZMlJsWm1kb2FXcHJiRzF1YjNCeGNuTjBkWFozZUhsNmUzeDlmbjgiLCJwYXRoIjoiL3YxL2J1c2luZXNzL3J1bnRpbWUtYmFzZWxpbmVzLzBkNGY2YzFhLTNiMmUtNGY1YS05YzhkLTdlNmY1YTRiM2MyZC9yZXRpcmUiLCJxdWVyeSI6ImRyeV9ydW49MSIsInRpbWVzdGFtcCI6MTc2MDAwMDAwMywidmVyc2lvbiI6Mn0"
+    },
+    {
+      "name": "a GET whose query is percent-encoded",
+      "method": "GET",
+      "path": "/v1/business/graph?handle=a%20b%2Bc",
+      "body": null,
+      "bearer": "eyJhbGciOiJIUzI1NiIsImtpZCI6IjEifQ.eyJzdWIiOiJ2ZWN0b3IifQ.c2lnbmF0dXJl",
+      "installation_id": "11111111-2222-4333-8444-555555555555",
+      "nonce": "gIGCg4SFhoeIiYqLjI2Oj5CRkpOUlZaXmJmam5ydnp8",
+      "timestamp": 1760000004,
+      "sent_body": "",
+      "proof_json": "{\"access_token_sha256\":\"1705b7e8d5b11e2612248ce57e4072748235ba8466adf5d1aa689694b13d0c69\",\"body_sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"installation_id\":\"11111111-2222-4333-8444-555555555555\",\"method\":\"GET\",\"nonce\":\"gIGCg4SFhoeIiYqLjI2Oj5CRkpOUlZaXmJmam5ydnp8\",\"path\":\"/v1/business/graph\",\"query\":\"handle=a%20b%2Bc\",\"timestamp\":1760000004,\"version\":2}",
+      "proof": "eyJhY2Nlc3NfdG9rZW5fc2hhMjU2IjoiMTcwNWI3ZThkNWIxMWUyNjEyMjQ4Y2U1N2U0MDcyNzQ4MjM1YmE4NDY2YWRmNWQxYWE2ODk2OTRiMTNkMGM2OSIsImJvZHlfc2hhMjU2IjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImluc3RhbGxhdGlvbl9pZCI6IjExMTExMTExLTIyMjItNDMzMy04NDQ0LTU1NTU1NTU1NTU1NSIsIm1ldGhvZCI6IkdFVCIsIm5vbmNlIjoiZ0lHQ2c0U0Zob2VJaVlxTGpJMk9qNUNSa3BPVWxaYVhtSm1hbTV5ZG5wOCIsInBhdGgiOiIvdjEvYnVzaW5lc3MvZ3JhcGgiLCJxdWVyeSI6ImhhbmRsZT1hJTIwYiUyQmMiLCJ0aW1lc3RhbXAiOjE3NjAwMDAwMDQsInZlcnNpb24iOjJ9"
+    }
+  ],
+  "operation": [
+    {
+      "name": "a transfer",
+      "method": "post",
+      "path": "/v1/account/transfer",
+      "body": {
+        "amount": 2500,
+        "to": "payee-7",
+        "note": "rent – märz"
+      },
+      "sent_body": "{\"amount\":2500,\"to\":\"payee-7\",\"note\":\"rent – märz\"}",
+      "operation": {
+        "method": "POST",
+        "path": "/v1/account/transfer",
+        "query": "",
+        "body_sha256": "98ab62dc38b20668da3e00e2f084116da5abc0d7b7a6e1cd4b0a682328990ef5"
+      }
+    },
+    {
+      "name": "an empty body",
+      "method": "POST",
+      "path": "/v1/account/sensitive-echo",
+      "body": {},
+      "sent_body": "{}",
+      "operation": {
+        "method": "POST",
+        "path": "/v1/account/sensitive-echo",
+        "query": "",
+        "body_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      }
+    }
+  ],
+  "thumbprint": [
+    {
+      "name": "a P-256 key",
+      "jwk": {
+        "kty": "EC",
+        "crv": "P-256",
+        "alg": "ES256",
+        "x": "gj4omMloswXs_xmCpuJRSfT_zhni0FN7RAUphteOih4",
+        "y": "yi8X_0pisZv5qnqdeY_wuTEayYgtLQHC0PdeqlCPafo"
+      },
+      "thumbprint": "f312c43658756ed4ae5af0d111e5ed83b643f6c4fbb5dcc28f48aecafd0294e0"
+    },
+    {
+      "name": "another P-256 key",
+      "jwk": {
+        "kty": "EC",
+        "crv": "P-256",
+        "alg": "ES256",
+        "x": "3AecBt0C5KPzTZLp95heI8Nr9Xmkirqarom0i4qA2XA",
+        "y": "TZxl4m9FWOeEc6qsaPscfUD6S7NzvO1siUIZXPWTWps"
+      },
+      "thumbprint": "261f0cdeeb8d013f0bd212205f97a521a744eac8743eee04d1fe73105ed36118"
+    }
+  ],
+  "step_up_proof": [
+    {
+      "name": "the sensitive operation, under the passcode",
+      "path": "/v1/account/sensitive-echo",
+      "body": {
+        "operation": "transfer",
+        "probe_id": "5b0d9c4e-6f2a-4c1e-9b7d-3a8f2e1c0d9b"
+      },
+      "bearer": "eyJhbGciOiJIUzI1NiIsImtpZCI6IjEifQ.eyJzdWIiOiJ2ZWN0b3IifQ.c2lnbmF0dXJl",
+      "installation_id": "11111111-2222-4333-8444-555555555555",
+      "factor": "passcode",
+      "nonce": "yMnKy8zNzs_Q0dLT1NXW19jZ2tvc3d7f4OHi4-Tl5uc",
+      "timestamp": 1760000100,
+      "sent_body": "{\"operation\":\"transfer\",\"probe_id\":\"5b0d9c4e-6f2a-4c1e-9b7d-3a8f2e1c0d9b\"}",
+      "access_proof": "eyJhY2Nlc3NfdG9rZW5fc2hhMjU2IjoiMTcwNWI3ZThkNWIxMWUyNjEyMjQ4Y2U1N2U0MDcyNzQ4MjM1YmE4NDY2YWRmNWQxYWE2ODk2OTRiMTNkMGM2OSIsImJvZHlfc2hhMjU2IjoiODEwZDIxOWQ1M2RlZTBiMmYxMWRkZWVmNDBlMTcwMDVlNDAwZTc5NTI1ZTFlOGJkOTc5MWU3MTlmNzZiZjBhOCIsImluc3RhbGxhdGlvbl9pZCI6IjExMTExMTExLTIyMjItNDMzMy04NDQ0LTU1NTU1NTU1NTU1NSIsIm1ldGhvZCI6IlBPU1QiLCJub25jZSI6InlNbkt5OHpOenNfUTBkTFQxTlhXMTlqWjJ0dmMzZDdmNE9IaTQtVGw1dWMiLCJwYXRoIjoiL3YxL2FjY291bnQvc2Vuc2l0aXZlLWVjaG8iLCJxdWVyeSI6IiIsInRpbWVzdGFtcCI6MTc2MDAwMDEwMCwidmVyc2lvbiI6Mn0",
+      "proof_json": "{\"version\":2,\"purpose\":\"stepup\",\"installation_id\":\"11111111-2222-4333-8444-555555555555\",\"access_token_sha256\":\"1705b7e8d5b11e2612248ce57e4072748235ba8466adf5d1aa689694b13d0c69\",\"method\":\"POST\",\"path\":\"/v1/account/sensitive-echo\",\"query\":\"\",\"body_sha256\":\"810d219d53dee0b2f11ddeef40e17005e400e79525e1e8bd9791e719f76bf0a8\",\"factor\":\"passcode\",\"nonce\":\"yMnKy8zNzs_Q0dLT1NXW19jZ2tvc3d7f4OHi4-Tl5uc\",\"timestamp\":1760000100}",
+      "proof": "eyJ2ZXJzaW9uIjoyLCJwdXJwb3NlIjoic3RlcHVwIiwiaW5zdGFsbGF0aW9uX2lkIjoiMTExMTExMTEtMjIyMi00MzMzLTg0NDQtNTU1NTU1NTU1NTU1IiwiYWNjZXNzX3Rva2VuX3NoYTI1NiI6IjE3MDViN2U4ZDViMTFlMjYxMjI0OGNlNTdlNDA3Mjc0ODIzNWJhODQ2NmFkZjVkMWFhNjg5Njk0YjEzZDBjNjkiLCJtZXRob2QiOiJQT1NUIiwicGF0aCI6Ii92MS9hY2NvdW50L3NlbnNpdGl2ZS1lY2hvIiwicXVlcnkiOiIiLCJib2R5X3NoYTI1NiI6IjgxMGQyMTlkNTNkZWUwYjJmMTFkZGVlZjQwZTE3MDA1ZTQwMGU3OTUyNWUxZThiZDk3OTFlNzE5Zjc2YmYwYTgiLCJmYWN0b3IiOiJwYXNzY29kZSIsIm5vbmNlIjoieU1uS3k4ek56c19RMGRMVDFOWFcxOWpaMnR2YzNkN2Y0T0hpNC1UbDV1YyIsInRpbWVzdGFtcCI6MTc2MDAwMDEwMH0"
+    },
+    {
+      "name": "a transfer whose body has text beyond ASCII, under the biometric",
+      "path": "/v1/account/transfer",
+      "body": {
+        "amount": 5,
+        "note": "café / €",
+        "quote": "\"x\""
+      },
+      "bearer": "eyJhbGciOiJIUzI1NiIsImtpZCI6IjEifQ.eyJzdWIiOiJ2ZWN0b3IifQ.c2lnbmF0dXJl",
+      "installation_id": "11111111-2222-4333-8444-555555555555",
+      "factor": "biometric",
+      "nonce": "6Onq6-zt7u_w8fLz9PX29_j5-vv8_f7_AAECAwQFBgc",
+      "timestamp": 1760000101,
+      "sent_body": "{\"amount\":5,\"note\":\"café / €\",\"quote\":\"\\\"x\\\"\"}",
+      "access_proof": "eyJhY2Nlc3NfdG9rZW5fc2hhMjU2IjoiMTcwNWI3ZThkNWIxMWUyNjEyMjQ4Y2U1N2U0MDcyNzQ4MjM1YmE4NDY2YWRmNWQxYWE2ODk2OTRiMTNkMGM2OSIsImJvZHlfc2hhMjU2IjoiZjVkNmExYmE5N2FlNjFkZGEwYTJmZTVjZGRjOTg2MWYzMWVkNDlmMDQ4MDZjMzBjYzFiZmMxMjI4NTZjOTY2YiIsImluc3RhbGxhdGlvbl9pZCI6IjExMTExMTExLTIyMjItNDMzMy04NDQ0LTU1NTU1NTU1NTU1NSIsIm1ldGhvZCI6IlBPU1QiLCJub25jZSI6IjZPbnE2LXp0N3VfdzhmTHo5UFgyOV9qNS12djhfZjdfQUFFQ0F3UUZCZ2MiLCJwYXRoIjoiL3YxL2FjY291bnQvdHJhbnNmZXIiLCJxdWVyeSI6IiIsInRpbWVzdGFtcCI6MTc2MDAwMDEwMSwidmVyc2lvbiI6Mn0",
+      "proof_json": "{\"version\":2,\"purpose\":\"stepup\",\"installation_id\":\"11111111-2222-4333-8444-555555555555\",\"access_token_sha256\":\"1705b7e8d5b11e2612248ce57e4072748235ba8466adf5d1aa689694b13d0c69\",\"method\":\"POST\",\"path\":\"/v1/account/transfer\",\"query\":\"\",\"body_sha256\":\"f5d6a1ba97ae61dda0a2fe5cddc9861f31ed49f04806c30cc1bfc122856c966b\",\"factor\":\"biometric\",\"nonce\":\"6Onq6-zt7u_w8fLz9PX29_j5-vv8_f7_AAECAwQFBgc\",\"timestamp\":1760000101}",
+      "proof": "eyJ2ZXJzaW9uIjoyLCJwdXJwb3NlIjoic3RlcHVwIiwiaW5zdGFsbGF0aW9uX2lkIjoiMTExMTExMTEtMjIyMi00MzMzLTg0NDQtNTU1NTU1NTU1NTU1IiwiYWNjZXNzX3Rva2VuX3NoYTI1NiI6IjE3MDViN2U4ZDViMTFlMjYxMjI0OGNlNTdlNDA3Mjc0ODIzNWJhODQ2NmFkZjVkMWFhNjg5Njk0YjEzZDBjNjkiLCJtZXRob2QiOiJQT1NUIiwicGF0aCI6Ii92MS9hY2NvdW50L3RyYW5zZmVyIiwicXVlcnkiOiIiLCJib2R5X3NoYTI1NiI6ImY1ZDZhMWJhOTdhZTYxZGRhMGEyZmU1Y2RkYzk4NjFmMzFlZDQ5ZjA0ODA2YzMwY2MxYmZjMTIyODU2Yzk2NmIiLCJmYWN0b3IiOiJiaW9tZXRyaWMiLCJub25jZSI6IjZPbnE2LXp0N3VfdzhmTHo5UFgyOV9qNS12djhfZjdfQUFFQ0F3UUZCZ2MiLCJ0aW1lc3RhbXAiOjE3NjAwMDAxMDF9"
+    },
+    {
+      "name": "a session upgrade with an empty body, under the passcode",
+      "path": "/v1/auth/upgrade",
+      "body": {},
+      "bearer": "eyJhbGciOiJIUzI1NiIsImtpZCI6IjEifQ.eyJzdWIiOiJ2ZWN0b3IifQ.c2lnbmF0dXJl",
+      "installation_id": "11111111-2222-4333-8444-555555555555",
+      "factor": "passcode",
+      "nonce": "CAkKCwwNDg8QERITFBUWFxgZGhscHR4fICEiIyQlJic",
+      "timestamp": 1760000102,
+      "sent_body": "{}",
+      "access_proof": "eyJhY2Nlc3NfdG9rZW5fc2hhMjU2IjoiMTcwNWI3ZThkNWIxMWUyNjEyMjQ4Y2U1N2U0MDcyNzQ4MjM1YmE4NDY2YWRmNWQxYWE2ODk2OTRiMTNkMGM2OSIsImJvZHlfc2hhMjU2IjoiNDQxMzZmYTM1NWIzNjc4YTExNDZhZDE2ZjdlODY0OWU5NGZiNGZjMjFmZTc3ZTgzMTBjMDYwZjYxY2FhZmY4YSIsImluc3RhbGxhdGlvbl9pZCI6IjExMTExMTExLTIyMjItNDMzMy04NDQ0LTU1NTU1NTU1NTU1NSIsIm1ldGhvZCI6IlBPU1QiLCJub25jZSI6IkNBa0tDd3dORGc4UUVSSVRGQlVXRnhnWkdoc2NIUjRmSUNFaUl5UWxKaWMiLCJwYXRoIjoiL3YxL2F1dGgvdXBncmFkZSIsInF1ZXJ5IjoiIiwidGltZXN0YW1wIjoxNzYwMDAwMTAyLCJ2ZXJzaW9uIjoyfQ",
+      "proof_json": "{\"version\":2,\"purpose\":\"stepup\",\"installation_id\":\"11111111-2222-4333-8444-555555555555\",\"access_token_sha256\":\"1705b7e8d5b11e2612248ce57e4072748235ba8466adf5d1aa689694b13d0c69\",\"method\":\"POST\",\"path\":\"/v1/auth/upgrade\",\"query\":\"\",\"body_sha256\":\"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\",\"factor\":\"passcode\",\"nonce\":\"CAkKCwwNDg8QERITFBUWFxgZGhscHR4fICEiIyQlJic\",\"timestamp\":1760000102}",
+      "proof": "eyJ2ZXJzaW9uIjoyLCJwdXJwb3NlIjoic3RlcHVwIiwiaW5zdGFsbGF0aW9uX2lkIjoiMTExMTExMTEtMjIyMi00MzMzLTg0NDQtNTU1NTU1NTU1NTU1IiwiYWNjZXNzX3Rva2VuX3NoYTI1NiI6IjE3MDViN2U4ZDViMTFlMjYxMjI0OGNlNTdlNDA3Mjc0ODIzNWJhODQ2NmFkZjVkMWFhNjg5Njk0YjEzZDBjNjkiLCJtZXRob2QiOiJQT1NUIiwicGF0aCI6Ii92MS9hdXRoL3VwZ3JhZGUiLCJxdWVyeSI6IiIsImJvZHlfc2hhMjU2IjoiNDQxMzZmYTM1NWIzNjc4YTExNDZhZDE2ZjdlODY0OWU5NGZiNGZjMjFmZTc3ZTgzMTBjMDYwZjYxY2FhZmY4YSIsImZhY3RvciI6InBhc3Njb2RlIiwibm9uY2UiOiJDQWtLQ3d3TkRnOFFFUklURkJVV0Z4Z1pHaHNjSFI0ZklDRWlJeVFsSmljIiwidGltZXN0YW1wIjoxNzYwMDAwMTAyfQ"
+    }
+  ],
+  "app_pin_proof_request": [
+    {
+      "name": "the sensitive operation",
+      "path": "/v1/account/sensitive-echo",
+      "body": {
+        "operation": "transfer",
+        "probe_id": "0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f"
+      },
+      "pin": "246810",
+      "nonce": "ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "sent_body": "{\"operation\":\"transfer\",\"probe_id\":\"0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f\"}",
+      "access_proof": "eyJhY2Nlc3NfdG9rZW5fc2hhMjU2IjoiMTcwNWI3ZThkNWIxMWUyNjEyMjQ4Y2U1N2U0MDcyNzQ4MjM1YmE4NDY2YWRmNWQxYWE2ODk2OTRiMTNkMGM2OSIsImJvZHlfc2hhMjU2IjoiMzIzYTdkZDJkZDkzYmI5NTk4ZmU2NTMzZmY2ZDk5MmI4MzhhOGNkOGQ2ZjU1N2IyODY4MDQzMmY2YWQ1Y2NhNyIsImluc3RhbGxhdGlvbl9pZCI6IjExMTExMTExLTIyMjItNDMzMy04NDQ0LTU1NTU1NTU1NTU1NSIsIm1ldGhvZCI6IlBPU1QiLCJub25jZSI6IlpHVm1aMmhwYW10c2JXNXZjSEZ5YzNSMWRuZDRlWHA3ZkgxLWY0Q0Jnb00iLCJwYXRoIjoiL3YxL2FjY291bnQvc2Vuc2l0aXZlLWVjaG8iLCJxdWVyeSI6IiIsInRpbWVzdGFtcCI6MTc2MDAwMDIwMCwidmVyc2lvbiI6Mn0",
+      "asked": {
+        "pin": "246810",
+        "request": {
+          "method": "POST",
+          "path": "/v1/account/sensitive-echo",
+          "query": "",
+          "body_sha256": "323a7dd2dd93bb9598fe6533ff6d992b838a8cd8d6f557b28680432f6ad5cca7",
+          "nonce": "ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM"
+        }
+      },
+      "asked_body": "{\"pin\":\"246810\",\"request\":{\"method\":\"POST\",\"path\":\"/v1/account/sensitive-echo\",\"query\":\"\",\"body_sha256\":\"323a7dd2dd93bb9598fe6533ff6d992b838a8cd8d6f557b28680432f6ad5cca7\",\"nonce\":\"ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM\"}}"
+    },
+    {
+      "name": "a transfer whose body has text beyond ASCII",
+      "path": "/v1/account/transfer",
+      "body": {
+        "amount": 5,
+        "note": "café / €",
+        "quote": "\"x\""
+      },
+      "pin": "246810",
+      "nonce": "hIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqM",
+      "sent_body": "{\"amount\":5,\"note\":\"café / €\",\"quote\":\"\\\"x\\\"\"}",
+      "access_proof": "eyJhY2Nlc3NfdG9rZW5fc2hhMjU2IjoiMTcwNWI3ZThkNWIxMWUyNjEyMjQ4Y2U1N2U0MDcyNzQ4MjM1YmE4NDY2YWRmNWQxYWE2ODk2OTRiMTNkMGM2OSIsImJvZHlfc2hhMjU2IjoiZjVkNmExYmE5N2FlNjFkZGEwYTJmZTVjZGRjOTg2MWYzMWVkNDlmMDQ4MDZjMzBjYzFiZmMxMjI4NTZjOTY2YiIsImluc3RhbGxhdGlvbl9pZCI6IjExMTExMTExLTIyMjItNDMzMy04NDQ0LTU1NTU1NTU1NTU1NSIsIm1ldGhvZCI6IlBPU1QiLCJub25jZSI6ImhJV0doNGlKaW91TWpZNlBrSkdTazVTVmxwZVltWnFibkoyZW42Q2hvcU0iLCJwYXRoIjoiL3YxL2FjY291bnQvdHJhbnNmZXIiLCJxdWVyeSI6IiIsInRpbWVzdGFtcCI6MTc2MDAwMDIwMSwidmVyc2lvbiI6Mn0",
+      "asked": {
+        "pin": "246810",
+        "request": {
+          "method": "POST",
+          "path": "/v1/account/transfer",
+          "query": "",
+          "body_sha256": "f5d6a1ba97ae61dda0a2fe5cddc9861f31ed49f04806c30cc1bfc122856c966b",
+          "nonce": "hIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqM"
+        }
+      },
+      "asked_body": "{\"pin\":\"246810\",\"request\":{\"method\":\"POST\",\"path\":\"/v1/account/transfer\",\"query\":\"\",\"body_sha256\":\"f5d6a1ba97ae61dda0a2fe5cddc9861f31ed49f04806c30cc1bfc122856c966b\",\"nonce\":\"hIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqM\"}}"
+    }
+  ],
+  "step_up_reenrol_proof": [
+    {
+      "name": "a new key, the first thumbprint vector",
+      "installation_id": "11111111-2222-4333-8444-555555555555",
+      "jwk": {
+        "kty": "EC",
+        "crv": "P-256",
+        "alg": "ES256",
+        "x": "gj4omMloswXs_xmCpuJRSfT_zhni0FN7RAUphteOih4",
+        "y": "yi8X_0pisZv5qnqdeY_wuTEayYgtLQHC0PdeqlCPafo"
+      },
+      "stepup_key_thumbprint": "f312c43658756ed4ae5af0d111e5ed83b643f6c4fbb5dcc28f48aecafd0294e0",
+      "nonce": "KCkqKywtLi8wMTIzNDU2Nzg5Ojs8PT4_QEFCQ0RFRkc",
+      "timestamp": 1760000300,
+      "proof_json": "{\"version\":1,\"purpose\":\"stepup_reenrol\",\"installation_id\":\"11111111-2222-4333-8444-555555555555\",\"stepup_key_thumbprint\":\"f312c43658756ed4ae5af0d111e5ed83b643f6c4fbb5dcc28f48aecafd0294e0\",\"nonce\":\"KCkqKywtLi8wMTIzNDU2Nzg5Ojs8PT4_QEFCQ0RFRkc\",\"timestamp\":1760000300}",
+      "proof": "eyJ2ZXJzaW9uIjoxLCJwdXJwb3NlIjoic3RlcHVwX3JlZW5yb2wiLCJpbnN0YWxsYXRpb25faWQiOiIxMTExMTExMS0yMjIyLTQzMzMtODQ0NC01NTU1NTU1NTU1NTUiLCJzdGVwdXBfa2V5X3RodW1icHJpbnQiOiJmMzEyYzQzNjU4NzU2ZWQ0YWU1YWYwZDExMWU1ZWQ4M2I2NDNmNmM0ZmJiNWRjYzI4ZjQ4YWVjYWZkMDI5NGUwIiwibm9uY2UiOiJLQ2txS3l3dExpOHdNVEl6TkRVMk56ZzVPanM4UFQ0X1FFRkNRMFJGUmtjIiwidGltZXN0YW1wIjoxNzYwMDAwMzAwfQ"
+    },
+    {
+      "name": "a new key, the second thumbprint vector",
+      "installation_id": "11111111-2222-4333-8444-555555555555",
+      "jwk": {
+        "kty": "EC",
+        "crv": "P-256",
+        "alg": "ES256",
+        "x": "3AecBt0C5KPzTZLp95heI8Nr9Xmkirqarom0i4qA2XA",
+        "y": "TZxl4m9FWOeEc6qsaPscfUD6S7NzvO1siUIZXPWTWps"
+      },
+      "stepup_key_thumbprint": "261f0cdeeb8d013f0bd212205f97a521a744eac8743eee04d1fe73105ed36118",
+      "nonce": "SElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmc",
+      "timestamp": 1760000301,
+      "proof_json": "{\"version\":1,\"purpose\":\"stepup_reenrol\",\"installation_id\":\"11111111-2222-4333-8444-555555555555\",\"stepup_key_thumbprint\":\"261f0cdeeb8d013f0bd212205f97a521a744eac8743eee04d1fe73105ed36118\",\"nonce\":\"SElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmc\",\"timestamp\":1760000301}",
+      "proof": "eyJ2ZXJzaW9uIjoxLCJwdXJwb3NlIjoic3RlcHVwX3JlZW5yb2wiLCJpbnN0YWxsYXRpb25faWQiOiIxMTExMTExMS0yMjIyLTQzMzMtODQ0NC01NTU1NTU1NTU1NTUiLCJzdGVwdXBfa2V5X3RodW1icHJpbnQiOiIyNjFmMGNkZWViOGQwMTNmMGJkMjEyMjA1Zjk3YTUyMWE3NDRlYWM4NzQzZWVlMDRkMWZlNzMxMDVlZDM2MTE4Iiwibm9uY2UiOiJTRWxLUzB4TlRrOVFVVkpUVkZWV1YxaFpXbHRjWFY1ZllHRmlZMlJsWm1jIiwidGltZXN0YW1wIjoxNzYwMDAwMzAxfQ"
+    }
+  ]
+}

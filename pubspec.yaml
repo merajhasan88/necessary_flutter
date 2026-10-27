@@ -1,0 +1,35 @@
+name: necessary
+description: >-
+  Device trust for Flutter apps: a key that never leaves the phone, signed
+  measurements of the phone and the app, and request proofs. Your backend
+  decides; the plugin never scores.
+version: 0.1.0
+repository: https://github.com/merajhasan88/necessary_flutter
+issue_tracker: https://github.com/merajhasan88/necessary_flutter/issues
+
+environment:
+  sdk: ^3.12.2
+  flutter: '>=3.3.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  crypto: ">=3.0.3 <4.0.0"
+  flutter_secure_storage: ">=10.3.1 <11.0.0"
+  http: ">=1.2.0 <2.0.0"
+  uuid: ">=4.4.0 <5.0.0"
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  pointycastle: ">=3.9.1 <5.0.0"
+  flutter_lints: ^6.0.0
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.meraj.necessary
+        pluginClass: NecessaryPlugin
+      ios:
+        pluginClass: NecessaryPlugin

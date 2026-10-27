@@ -1,0 +1,2730 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:devicetrust:integrity-report:1:android-8:ios-5",
+  "title": "Device Trust integrity report, format 1",
+  "description": "The JSON a collector signs (report_payload, decoded) under evidence contracts Android 8 and iOS 5. Well-formedness only: whether a measurement is complete is in the x- annotations and RULES.md.",
+  "x-contract": {
+    "report_format": 1,
+    "android": 8,
+    "ios": 5,
+    "max_payload_bytes": 65536
+  },
+  "type": "object",
+  "required": [
+    "version",
+    "installation_id",
+    "challenge_id",
+    "platform",
+    "challenge_nonce",
+    "collected_at",
+    "collector_version",
+    "probe_results"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "installation_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "challenge_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "platform": {
+      "enum": [
+        "android",
+        "ios"
+      ]
+    },
+    "challenge_nonce": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43}$",
+      "description": "the challenge's 32-byte nonce, base64url without padding, exactly as issued"
+    },
+    "collected_at": {
+      "type": "integer",
+      "minimum": 0,
+      "x-unit": "Unix seconds, UTC"
+    },
+    "collector_version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "x-unit": "the collector's version on its platform"
+    },
+    "probe_results": {
+      "type": "object"
+    },
+    "enabled_measurements": {
+      "type": "array",
+      "maxItems": 7,
+      "items": {
+        "enum": [
+          "local_addresses",
+          "accessibility",
+          "notification_access",
+          "other_access",
+          "screen_capture",
+          "location",
+          "mock_location"
+        ]
+      },
+      "description": "the personal measurements this app's developers enabled"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "platform": {
+            "const": "android"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "collector_version": {
+            "minimum": 8
+          },
+          "probe_results": {
+            "$ref": "#/$defs/android.probe_results"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "platform": {
+            "const": "ios"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "collector_version": {
+            "minimum": 5
+          },
+          "probe_results": {
+            "$ref": "#/$defs/ios.probe_results"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "unread": {
+      "type": "object",
+      "maxProperties": 64,
+      "propertyNames": {
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 160
+      },
+      "description": "the parts this probe could not read, each with why: never a clean no"
+    },
+    "app_entry": {
+      "type": "object",
+      "required": [
+        "package"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "package": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)*$"
+        },
+        "service": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "system": {
+          "type": "boolean"
+        },
+        "installer": {
+          "type": "string",
+          "maxLength": 128
+        }
+      }
+    },
+    "android.app_identity": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "package_name": {
+          "type": "string"
+        },
+        "apk_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "the SHA-256 of the base APK alone, never its splits"
+        },
+        "cert_sha256": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "debuggable": {
+          "type": "boolean"
+        },
+        "allow_backup": {
+          "type": "boolean"
+        },
+        "current_signers": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "signing_lineage": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "split_apks": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "sha256"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
+          },
+          "description": "the split APKs, apart from apk_sha256 (the base APK's alone), sorted by name; empty without splits"
+        },
+        "version_name": {
+          "description": "the app's version name"
+        },
+        "version_code": {
+          "description": "the app's version code"
+        },
+        "installer_package": {
+          "description": "the package that installed the app; null when none is named"
+        },
+        "source_dir": {
+          "description": "the base APK's path"
+        }
+      },
+      "additionalProperties": true,
+      "description": "the installed app: package, the base APK's hash, the signing certificates, flags, install source, and the split APKs apart",
+      "x-answered": "when the backend requests it",
+      "x-complete-when-ok": [
+        "allow_backup",
+        "apk_sha256",
+        "cert_sha256",
+        "debuggable",
+        "package_name"
+      ]
+    },
+    "android.debug_state": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "debugger_connected": {
+          "type": "boolean"
+        },
+        "waiting_for_debugger": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true,
+      "description": "a Java debugger attached or awaited",
+      "x-answered": "when the backend requests it",
+      "x-complete-when-ok": [
+        "debugger_connected",
+        "waiting_for_debugger"
+      ]
+    },
+    "android.root_files": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "found_paths": {
+          "type": "array"
+        },
+        "test_keys": {
+          "type": "boolean"
+        },
+        "build_tags": {
+          "description": "the build's tags, e.g. release-keys"
+        }
+      },
+      "additionalProperties": true,
+      "description": "known root, su and framework paths that exist; a test-keys build",
+      "x-answered": "when the backend requests it",
+      "x-complete-when-ok": [
+        "found_paths",
+        "test_keys"
+      ]
+    },
+    "android.system_properties": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "properties": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true,
+      "description": "build and boot-security properties",
+      "x-answered": "when the backend requests it",
+      "x-complete-when-ok": [
+        "properties"
+      ]
+    },
+    "android.runtime_maps": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "suspicious_tokens": {
+          "type": "array"
+        },
+        "maps_lines": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "count"
+        },
+        "suspicious_line_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "count"
+        }
+      },
+      "additionalProperties": true,
+      "description": "instrumentation and hooking frameworks named in the app's memory map",
+      "x-answered": "when the backend requests it",
+      "x-complete-when-ok": [
+        "maps_lines",
+        "suspicious_tokens"
+      ]
+    },
+    "android.tracer": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "tracer_pid": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "process ID; 0: none"
+        },
+        "seccomp": {
+          "description": "the Seccomp mode from /proc/self/status; -1 when absent"
+        },
+        "no_new_privs": {
+          "description": "NoNewPrivs from /proc/self/status; -1 when absent"
+        }
+      },
+      "additionalProperties": true,
+      "description": "another process tracing the app",
+      "x-answered": "when the backend requests it",
+      "x-complete-when-ok": [
+        "tracer_pid"
+      ]
+    },
+    "android.root_shell": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "su_found": {
+          "type": "boolean"
+        },
+        "su_path": {
+          "description": "where su resolved; empty when it did not"
+        }
+      },
+      "additionalProperties": true,
+      "description": "whether su resolves from the app's shell",
+      "x-answered": "when the backend requests it",
+      "x-complete-when-ok": [
+        "su_found"
+      ]
+    },
+    "android.selinux": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "mode": {
+          "enum": [
+            "enforcing",
+            "permissive",
+            "disabled",
+            "unknown"
+          ],
+          "description": "unknown when the app could not read it: not evidence of anything"
+        },
+        "getenforce": {
+          "type": "string"
+        },
+        "enforce_value": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "description": "the SELinux mode, read two ways",
+      "x-answered": "when the backend requests it",
+      "x-complete-when-ok": [
+        "enforce_value",
+        "getenforce",
+        "mode"
+      ]
+    },
+    "android.mounts": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "protected_rw_mounts": {
+          "type": "array"
+        }
+      },
+      "additionalProperties": true,
+      "description": "system partitions mounted writable",
+      "x-answered": "when the backend requests it",
+      "x-complete-when-ok": [
+        "protected_rw_mounts"
+      ]
+    },
+    "android.frida_ports": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "open_ports": {
+          "type": "array"
+        }
+      },
+      "additionalProperties": true,
+      "description": "Frida's default local ports accepting connections",
+      "x-answered": "when the backend requests it",
+      "x-complete-when-ok": [
+        "open_ports"
+      ]
+    },
+    "android.instrumentation_threads": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "frida_threads": {
+          "type": "array"
+        },
+        "token_threads": {
+          "type": "array"
+        },
+        "glib_threads": {
+          "type": "array"
+        },
+        "thread_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "count"
+        }
+      },
+      "additionalProperties": true,
+      "description": "threads an instrumentation runtime creates, even renamed",
+      "x-answered": "when the backend requests it",
+      "x-complete-when-ok": [
+        "frida_threads",
+        "glib_threads",
+        "thread_count",
+        "token_threads"
+      ]
+    },
+    "android.exec_mappings": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "wx_mappings": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "count"
+        },
+        "deleted_exec_mappings": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "count"
+        },
+        "wx_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "wx_size_classes": {
+          "type": "string"
+        },
+        "wx_smallest_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "wx_largest_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "deleted_exec_own_code": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "count"
+        },
+        "deleted_exec_jit": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "count"
+        },
+        "anon_exec_labeled": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "count"
+        },
+        "anon_exec_unlabeled": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "count"
+        },
+        "anon_exec_unlabeled_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "maps_lines": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "count"
+        },
+        "samples": {
+          "type": "array"
+        }
+      },
+      "additionalProperties": true,
+      "description": "memory both writable and executable, executable memory from deleted files, unlabelled executable regions",
+      "x-answered": "when the backend requests it",
+      "x-complete-when-ok": [
+        "deleted_exec_mappings",
+        "deleted_exec_own_code",
+        "maps_lines",
+        "wx_mappings"
+      ]
+    },
+    "android.code_integrity": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "checked": {
+          "type": "boolean"
+        },
+        "diff_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "core_compared_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "ext_diff_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "ext_compared_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "app_diff_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "app_compared_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "core_expected_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "core_skipped_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "core_unreadable_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "ext_expected_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "ext_skipped_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "ext_unreadable_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "app_expected_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "app_skipped_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "app_unreadable_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "core_complete": {
+          "type": "boolean"
+        },
+        "ext_complete": {
+          "type": "boolean"
+        },
+        "app_complete": {
+          "type": "boolean"
+        },
+        "protect_restore_failures": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "count"
+        },
+        "xom_regions_unlocked": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "count"
+        },
+        "xom_regions_unreadable": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "count"
+        },
+        "elapsed_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "milliseconds"
+        },
+        "core_diff_bytes": {
+          "description": "bytes that differ in the core system libraries"
+        },
+        "ext_libs_diff": {
+          "description": "extended system libraries with a difference"
+        },
+        "app_libs_diff": {
+          "description": "app libraries with a difference"
+        },
+        "diffed_libs": {
+          "description": "the libraries with a difference, comma-separated"
+        }
+      },
+      "additionalProperties": true,
+      "description": "the app's native code and system libraries in memory compared with their files, region by region",
+      "x-answered": "when the backend requests it",
+      "x-complete-when-ok": [
+        "app_compared_bytes",
+        "app_diff_bytes",
+        "checked",
+        "core_compared_bytes",
+        "diff_bytes",
+        "ext_compared_bytes",
+        "ext_diff_bytes"
+      ],
+      "x-complete-when-checked": [
+        "app_expected_bytes",
+        "core_expected_bytes",
+        "ext_expected_bytes"
+      ]
+    },
+    "android.developer_settings": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "developer_options_enabled": {
+          "type": "boolean"
+        },
+        "adb_enabled": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true,
+      "description": "developer options and USB debugging",
+      "x-answered": "when the backend requests it",
+      "x-complete-when-ok": [
+        "adb_enabled",
+        "developer_options_enabled"
+      ]
+    },
+    "android.emulator": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "suspected": {
+          "type": "boolean"
+        },
+        "reasons": {
+          "description": "the build values that looked like an emulator"
+        },
+        "model": {
+          "description": "the build's model"
+        },
+        "manufacturer": {
+          "description": "the build's manufacturer"
+        },
+        "product": {
+          "description": "the build's product"
+        },
+        "hardware": {
+          "description": "the build's hardware"
+        }
+      },
+      "additionalProperties": true,
+      "description": "build values typical of an emulator",
+      "x-answered": "when the backend requests it",
+      "x-complete-when-ok": [
+        "suspected"
+      ]
+    },
+    "android.device": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "release": {
+          "type": "string"
+        },
+        "sdk_int": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "Android API level"
+        },
+        "security_patch": {
+          "type": "string"
+        },
+        "manufacturer": {
+          "type": "string"
+        },
+        "brand": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "device": {
+          "type": "string"
+        },
+        "build_id": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string"
+        },
+        "abi": {
+          "type": "string"
+        },
+        "page_size": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        }
+      },
+      "additionalProperties": true,
+      "description": "the OS version, the security patch level, model, build, the app's ABI, memory page size",
+      "x-answered": "volunteered on every scan",
+      "x-parts": [
+        "sdk_int"
+      ]
+    },
+    "android.network": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "vpn_active": {
+          "type": "boolean"
+        },
+        "http_proxy_configured": {
+          "type": "boolean"
+        },
+        "transports": {
+          "type": "array"
+        },
+        "interfaces": {
+          "type": "array"
+        }
+      },
+      "additionalProperties": true,
+      "description": "a VPN up on any network; an HTTP proxy set",
+      "x-answered": "volunteered on every scan",
+      "x-parts": [
+        "vpn_active"
+      ]
+    },
+    "android.local_addresses": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "addresses": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "required": [
+              "interface",
+              "address"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "interface": {
+                "type": "string",
+                "maxLength": 64
+              },
+              "address": {
+                "type": "string",
+                "maxLength": 64
+              }
+            }
+          }
+        }
+      },
+      "additionalProperties": true,
+      "description": "the phone's own IP addresses, link-local ones left out",
+      "x-answered": "personal: only when the backend requests it and the app enabled it",
+      "x-parts": [
+        "addresses"
+      ]
+    },
+    "android.accessibility": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "services": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/app_entry"
+          }
+        },
+        "keyboard": {
+          "$ref": "#/$defs/app_entry"
+        },
+        "settings_only": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true,
+      "description": "the Accessibility services that are on, and the keyboard in use",
+      "x-answered": "personal: only when the backend requests it and the app enabled it",
+      "x-parts": [
+        "services",
+        "settings_only",
+        "truncated: false"
+      ]
+    },
+    "android.notification_access": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "listeners": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/app_entry"
+          }
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true,
+      "description": "the apps allowed to read notifications",
+      "x-answered": "personal: only when the backend requests it and the app enabled it",
+      "x-parts": [
+        "listeners",
+        "truncated: false"
+      ]
+    },
+    "android.other_access": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "device_admins": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/app_entry"
+          }
+        },
+        "remote_access_apps": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/app_entry"
+          }
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true,
+      "description": "device-administrator apps, and known remote-control apps installed",
+      "x-answered": "personal: only when the backend requests it and the app enabled it",
+      "x-parts": [
+        "device_admins",
+        "remote_access_apps",
+        "truncated: false"
+      ]
+    },
+    "android.screen_capture": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "recording": {
+          "type": "boolean"
+        },
+        "external_displays": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "count"
+        },
+        "recording_status": {
+          "enum": [
+            "unsupported",
+            "no_permission",
+            "unavailable"
+          ],
+          "description": "why recording was not measured"
+        }
+      },
+      "additionalProperties": true,
+      "description": "the screen being recorded, mirrored or cast",
+      "x-answered": "personal: only when the backend requests it and the app enabled it",
+      "x-parts": [
+        "recording",
+        "external_displays"
+      ]
+    },
+    "android.location": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "permission": {
+          "enum": [
+            "none",
+            "approximate",
+            "precise"
+          ]
+        },
+        "latitude": {
+          "type": "number",
+          "minimum": -90.0,
+          "maximum": 90.0,
+          "x-unit": "degrees, WGS 84"
+        },
+        "longitude": {
+          "type": "number",
+          "minimum": -180.0,
+          "maximum": 180.0,
+          "x-unit": "degrees, WGS 84"
+        },
+        "accuracy_m": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 10000000.0,
+          "x-unit": "metres"
+        },
+        "age_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "seconds"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "fix_time": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "Unix seconds, UTC"
+        }
+      },
+      "additionalProperties": true,
+      "description": "the last location the phone already knows -- never a fresh fix, never a prompt",
+      "x-answered": "personal: only when the backend requests it and the app enabled it",
+      "x-parts": [
+        "permission",
+        "latitude",
+        "longitude",
+        "age_seconds"
+      ]
+    },
+    "android.mock_location": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "permission": {
+          "enum": [
+            "none",
+            "approximate",
+            "precise"
+          ]
+        },
+        "mock": {
+          "type": "boolean"
+        },
+        "age_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "seconds"
+        },
+        "fix_time": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "Unix seconds, UTC"
+        }
+      },
+      "additionalProperties": true,
+      "description": "whether that location was faked; never its coordinates",
+      "x-answered": "personal: only when the backend requests it and the app enabled it",
+      "x-parts": [
+        "permission",
+        "mock",
+        "age_seconds"
+      ]
+    },
+    "android.probe_results": {
+      "type": "object",
+      "properties": {
+        "app_identity": {
+          "$ref": "#/$defs/android.app_identity"
+        },
+        "debug_state": {
+          "$ref": "#/$defs/android.debug_state"
+        },
+        "root_files": {
+          "$ref": "#/$defs/android.root_files"
+        },
+        "system_properties": {
+          "$ref": "#/$defs/android.system_properties"
+        },
+        "runtime_maps": {
+          "$ref": "#/$defs/android.runtime_maps"
+        },
+        "tracer": {
+          "$ref": "#/$defs/android.tracer"
+        },
+        "root_shell": {
+          "$ref": "#/$defs/android.root_shell"
+        },
+        "selinux": {
+          "$ref": "#/$defs/android.selinux"
+        },
+        "mounts": {
+          "$ref": "#/$defs/android.mounts"
+        },
+        "frida_ports": {
+          "$ref": "#/$defs/android.frida_ports"
+        },
+        "instrumentation_threads": {
+          "$ref": "#/$defs/android.instrumentation_threads"
+        },
+        "exec_mappings": {
+          "$ref": "#/$defs/android.exec_mappings"
+        },
+        "code_integrity": {
+          "$ref": "#/$defs/android.code_integrity"
+        },
+        "developer_settings": {
+          "$ref": "#/$defs/android.developer_settings"
+        },
+        "emulator": {
+          "$ref": "#/$defs/android.emulator"
+        },
+        "device": {
+          "$ref": "#/$defs/android.device"
+        },
+        "network": {
+          "$ref": "#/$defs/android.network"
+        },
+        "local_addresses": {
+          "$ref": "#/$defs/android.local_addresses"
+        },
+        "accessibility": {
+          "$ref": "#/$defs/android.accessibility"
+        },
+        "notification_access": {
+          "$ref": "#/$defs/android.notification_access"
+        },
+        "other_access": {
+          "$ref": "#/$defs/android.other_access"
+        },
+        "screen_capture": {
+          "$ref": "#/$defs/android.screen_capture"
+        },
+        "location": {
+          "$ref": "#/$defs/android.location"
+        },
+        "mock_location": {
+          "$ref": "#/$defs/android.mock_location"
+        }
+      },
+      "additionalProperties": true,
+      "description": "one object per measurement; a measurement this contract does not know is ignored"
+    },
+    "ios.app_identity": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "bundle_id": {
+          "type": "string"
+        },
+        "executable_sha256": {
+          "type": "string"
+        },
+        "version_name": {
+          "description": "the app's version"
+        },
+        "version_code": {
+          "description": "the app's build number"
+        },
+        "executable_bytes": {
+          "description": "the executable's size in bytes"
+        }
+      },
+      "additionalProperties": true,
+      "description": "the installed app and its executable's hash",
+      "x-answered": "when the backend requests it",
+      "x-complete-when-ok": [
+        "bundle_id",
+        "executable_sha256"
+      ]
+    },
+    "ios.code_signing": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "signing_identifier": {
+          "type": "string"
+        },
+        "team_identifier": {
+          "type": "string"
+        },
+        "get_task_allow": {
+          "type": "boolean"
+        },
+        "signed": {
+          "description": "whether the executable carries a signature"
+        },
+        "signature_absent": {
+          "description": "true when it carries none"
+        },
+        "signature_parse_error": {
+          "description": "why the signature could not be read"
+        },
+        "code_directory_flags": {
+          "description": "the code directory's flags"
+        },
+        "entitlement_count": {
+          "description": "how many entitlements the signature grants"
+        }
+      },
+      "additionalProperties": true,
+      "description": "the executable's own code signature",
+      "x-answered": "when the backend requests it",
+      "x-complete-when-ok": [
+        "get_task_allow",
+        "signing_identifier",
+        "team_identifier"
+      ]
+    },
+    "ios.debugger": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "traced": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true,
+      "description": "a debugger tracing the process",
+      "x-answered": "when the backend requests it",
+      "x-complete-when-ok": [
+        "traced"
+      ]
+    },
+    "ios.jailbreak_files": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "found_paths": {
+          "type": "array"
+        },
+        "checked_count": {
+          "description": "how many paths were checked"
+        }
+      },
+      "additionalProperties": true,
+      "description": "known jailbreak paths that exist",
+      "x-answered": "when the backend requests it",
+      "x-complete-when-ok": [
+        "found_paths"
+      ]
+    },
+    "ios.sandbox": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "write_outside_sandbox_succeeded": {
+          "type": "boolean"
+        },
+        "probe_path": {
+          "description": "the path the app tried to write"
+        }
+      },
+      "additionalProperties": true,
+      "description": "whether the app can write outside its sandbox",
+      "x-answered": "when the backend requests it",
+      "x-complete-when-ok": [
+        "write_outside_sandbox_succeeded"
+      ]
+    },
+    "ios.dyld_images": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "suspicious_tokens": {
+          "type": "array"
+        },
+        "suspicious_image_count": {
+          "description": "loaded images with a listed name"
+        },
+        "image_count": {
+          "description": "images loaded"
+        }
+      },
+      "additionalProperties": true,
+      "description": "instrumentation and jailbreak names among the loaded libraries",
+      "x-answered": "when the backend requests it",
+      "x-complete-when-ok": [
+        "suspicious_tokens"
+      ]
+    },
+    "ios.code_integrity": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "checked": {
+          "type": "boolean"
+        },
+        "app_diff_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "app_compared_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "app_images_expected": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "count"
+        },
+        "app_images_compared": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "count"
+        },
+        "app_images_unreadable": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "count"
+        },
+        "app_images_skipped": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "count"
+        },
+        "app_expected_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "app_unreadable_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "app_skipped_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        },
+        "app_complete": {
+          "type": "boolean"
+        },
+        "main_executable_compared": {
+          "type": "boolean"
+        },
+        "app_images_not_compared": {
+          "type": "object",
+          "maxProperties": 64,
+          "propertyNames": {
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "description": "each app image not compared, by its path in the app, with why"
+        },
+        "system_images_unreadable": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "count"
+        },
+        "app_libs_diff": {
+          "description": "app images with a difference"
+        },
+        "diffed_libs": {
+          "description": "the images with a difference, comma-separated"
+        },
+        "diff_bytes": {
+          "description": "always 0: iOS system libraries cannot be read"
+        },
+        "core_compared_bytes": {
+          "description": "always 0: iOS system libraries cannot be read"
+        },
+        "core_diff_bytes": {
+          "description": "always 0"
+        },
+        "ext_compared_bytes": {
+          "description": "always 0"
+        },
+        "ext_diff_bytes": {
+          "description": "always 0"
+        },
+        "ext_libs_diff": {
+          "description": "always 0"
+        },
+        "system_bucket_reason": {
+          "description": "why the system figures are 0"
+        },
+        "app_segment_compared_bytes": {
+          "description": "the whole __TEXT segments compared, in bytes (telemetry)"
+        },
+        "app_segment_diff_bytes": {
+          "description": "bytes that differ across those segments (telemetry)"
+        }
+      },
+      "additionalProperties": true,
+      "description": "the app's own code in memory compared with its files, image by image",
+      "x-answered": "volunteered on every scan",
+      "x-complete-when-ok": [
+        "app_compared_bytes",
+        "app_diff_bytes",
+        "checked"
+      ],
+      "x-complete-when-checked": [
+        "app_compared_bytes",
+        "app_complete",
+        "app_expected_bytes",
+        "app_images_compared",
+        "app_images_expected",
+        "app_images_skipped",
+        "app_images_unreadable",
+        "app_skipped_bytes",
+        "app_unreadable_bytes",
+        "main_executable_compared"
+      ]
+    },
+    "ios.environment": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "dyld_insert_libraries": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "description": "libraries injected through the environment",
+      "x-answered": "when the backend requests it",
+      "x-complete-when-ok": [
+        "dyld_insert_libraries"
+      ]
+    },
+    "ios.simulator": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "is_simulator": {
+          "type": "boolean"
+        },
+        "model": {
+          "description": "the hardware model identifier"
+        }
+      },
+      "additionalProperties": true,
+      "description": "the simulator, and the hardware model",
+      "x-answered": "when the backend requests it",
+      "x-complete-when-ok": [
+        "is_simulator"
+      ]
+    },
+    "ios.device": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "os_version": {
+          "type": "string"
+        },
+        "os_build": {
+          "type": "string"
+        },
+        "model_identifier": {
+          "type": "string"
+        },
+        "page_size": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "bytes"
+        }
+      },
+      "additionalProperties": true,
+      "description": "the OS version and build, and the model",
+      "x-answered": "volunteered on every scan",
+      "x-parts": [
+        "os_version"
+      ]
+    },
+    "ios.network": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "vpn_active": {
+          "type": "boolean"
+        },
+        "http_proxy_configured": {
+          "type": "boolean"
+        },
+        "scoped_interfaces": {
+          "type": "array"
+        }
+      },
+      "additionalProperties": true,
+      "description": "a VPN, inferred from the interfaces the proxy settings are scoped to -- a heuristic, so the names come with it; an HTTP proxy",
+      "x-answered": "volunteered on every scan",
+      "x-parts": [
+        "vpn_active"
+      ]
+    },
+    "ios.local_addresses": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "addresses": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "required": [
+              "interface",
+              "address"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "interface": {
+                "type": "string",
+                "maxLength": 64
+              },
+              "address": {
+                "type": "string",
+                "maxLength": 64
+              }
+            }
+          }
+        }
+      },
+      "additionalProperties": true,
+      "description": "the phone's own IP addresses, link-local ones left out",
+      "x-answered": "personal: only when the backend requests it and the app enabled it",
+      "x-parts": [
+        "addresses"
+      ]
+    },
+    "ios.accessibility": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        }
+      },
+      "additionalProperties": true,
+      "description": "the Accessibility services that are on, and the keyboard in use; iOS shows an app no other app, so it answers unsupported",
+      "x-answered": "personal: only when the backend requests it and the app enabled it"
+    },
+    "ios.notification_access": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        }
+      },
+      "additionalProperties": true,
+      "description": "the apps allowed to read notifications; iOS shows an app no other app, so it answers unsupported",
+      "x-answered": "personal: only when the backend requests it and the app enabled it"
+    },
+    "ios.other_access": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        }
+      },
+      "additionalProperties": true,
+      "description": "device-administrator apps, and known remote-control apps installed; iOS shows an app no other app, so it answers unsupported",
+      "x-answered": "personal: only when the backend requests it and the app enabled it"
+    },
+    "ios.screen_capture": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "recording": {
+          "type": "boolean"
+        },
+        "external_displays": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "count"
+        },
+        "recording_status": {
+          "enum": [
+            "unsupported",
+            "no_permission",
+            "unavailable"
+          ],
+          "description": "why recording was not measured"
+        }
+      },
+      "additionalProperties": true,
+      "description": "the screen being recorded, mirrored or cast",
+      "x-answered": "personal: only when the backend requests it and the app enabled it",
+      "x-parts": [
+        "recording",
+        "external_displays"
+      ]
+    },
+    "ios.location": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "permission": {
+          "enum": [
+            "none",
+            "approximate",
+            "precise"
+          ]
+        },
+        "latitude": {
+          "type": "number",
+          "minimum": -90.0,
+          "maximum": 90.0,
+          "x-unit": "degrees, WGS 84"
+        },
+        "longitude": {
+          "type": "number",
+          "minimum": -180.0,
+          "maximum": 180.0,
+          "x-unit": "degrees, WGS 84"
+        },
+        "accuracy_m": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 10000000.0,
+          "x-unit": "metres"
+        },
+        "age_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "seconds"
+        },
+        "fix_time": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "Unix seconds, UTC"
+        }
+      },
+      "additionalProperties": true,
+      "description": "the last location the phone already knows -- never a fresh fix, never a prompt",
+      "x-answered": "personal: only when the backend requests it and the app enabled it",
+      "x-parts": [
+        "permission",
+        "latitude",
+        "longitude",
+        "age_seconds"
+      ]
+    },
+    "ios.mock_location": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "permission": {
+          "enum": [
+            "none",
+            "approximate",
+            "precise"
+          ]
+        },
+        "mock": {
+          "type": "boolean"
+        },
+        "accessory": {
+          "type": "boolean"
+        },
+        "age_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "seconds"
+        },
+        "fix_time": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "Unix seconds, UTC"
+        }
+      },
+      "additionalProperties": true,
+      "description": "whether that location was faked; never its coordinates",
+      "x-answered": "personal: only when the backend requests it and the app enabled it",
+      "x-parts": [
+        "permission",
+        "mock",
+        "age_seconds"
+      ]
+    },
+    "ios.probe_results": {
+      "type": "object",
+      "properties": {
+        "app_identity": {
+          "$ref": "#/$defs/ios.app_identity"
+        },
+        "code_signing": {
+          "$ref": "#/$defs/ios.code_signing"
+        },
+        "debugger": {
+          "$ref": "#/$defs/ios.debugger"
+        },
+        "jailbreak_files": {
+          "$ref": "#/$defs/ios.jailbreak_files"
+        },
+        "sandbox": {
+          "$ref": "#/$defs/ios.sandbox"
+        },
+        "dyld_images": {
+          "$ref": "#/$defs/ios.dyld_images"
+        },
+        "code_integrity": {
+          "$ref": "#/$defs/ios.code_integrity"
+        },
+        "environment": {
+          "$ref": "#/$defs/ios.environment"
+        },
+        "simulator": {
+          "$ref": "#/$defs/ios.simulator"
+        },
+        "device": {
+          "$ref": "#/$defs/ios.device"
+        },
+        "network": {
+          "$ref": "#/$defs/ios.network"
+        },
+        "local_addresses": {
+          "$ref": "#/$defs/ios.local_addresses"
+        },
+        "accessibility": {
+          "$ref": "#/$defs/ios.accessibility"
+        },
+        "notification_access": {
+          "$ref": "#/$defs/ios.notification_access"
+        },
+        "other_access": {
+          "$ref": "#/$defs/ios.other_access"
+        },
+        "screen_capture": {
+          "$ref": "#/$defs/ios.screen_capture"
+        },
+        "location": {
+          "$ref": "#/$defs/ios.location"
+        },
+        "mock_location": {
+          "$ref": "#/$defs/ios.mock_location"
+        }
+      },
+      "additionalProperties": true,
+      "description": "one object per measurement; a measurement this contract does not know is ignored"
+    }
+  }
+}

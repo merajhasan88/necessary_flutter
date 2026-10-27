@@ -1,0 +1,53 @@
+# Codemagic: an unsigned iOS build of the example app, for a phone that
+# installs unsigned builds (or for you to sign).
+#
+# The backends the example offers come from Codemagic, never from this file:
+# in this app's settings, add the environment variable group necessary_example
+# with NECESSARY_BACKENDS ("Python=https://…;C#=https://…") or
+# NECESSARY_BACKEND_URL (one backend).
+workflows:
+  example-ios-unsigned:
+    name: iOS unsigned build of the example app
+    instance_type: mac_mini_m2
+    max_build_duration: 45
+
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      groups:
+        - necessary_example
+
+    scripts:
+      - name: Fetch packages
+        script: |
+          cd example && flutter pub get
+
+      - name: Build iOS without code signing
+        script: |
+          set -e
+          if [ -n "${NECESSARY_BACKENDS:-}" ]; then
+            define="NECESSARY_BACKENDS=$NECESSARY_BACKENDS"
+          elif [ -n "${NECESSARY_BACKEND_URL:-}" ]; then
+            define="NECESSARY_BACKEND_URL=$NECESSARY_BACKEND_URL"
+          else
+            echo "Set NECESSARY_BACKENDS or NECESSARY_BACKEND_URL in the group necessary_example."
+            exit 1
+          fi
+          cd example
+          flutter build ios --release --no-codesign --dart-define="$define"
+
+      - name: Package Runner.app into an unsigned .ipa
+        script: |
+          set -e
+          cd example
+          APP="build/ios/iphoneos/Runner.app"
+          test -d "$APP" || { echo "Runner.app not found at $APP"; exit 1; }
+          rm -rf build/ipa && mkdir -p build/ipa/Payload
+          cp -R "$APP" build/ipa/Payload/
+          cd build/ipa
+          zip -qry "$CM_BUILD_DIR/necessary-example-unsigned.ipa" Payload
+          ls -lh "$CM_BUILD_DIR/necessary-example-unsigned.ipa"
+
+    artifacts:
+      - necessary-example-unsigned.ipa

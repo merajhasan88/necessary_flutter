@@ -1,0 +1,228 @@
+{
+  "description": "The location and mock-location measurements, requested by the backend and enabled by the app.",
+  "plan": {
+    "required_probes": [
+      "app_identity",
+      "debug_state",
+      "root_files",
+      "system_properties",
+      "runtime_maps",
+      "tracer",
+      "root_shell",
+      "selinux",
+      "mounts",
+      "frida_ports",
+      "instrumentation_threads",
+      "exec_mappings",
+      "code_integrity",
+      "developer_settings",
+      "emulator"
+    ],
+    "optional_probes": [
+      "location",
+      "mock_location"
+    ]
+  },
+  "expect": "complete",
+  "why": "Both answers carry the one fix's time: one observation.",
+  "report": {
+    "installation_id": "00000000-0000-4000-8000-000000000001",
+    "challenge_id": "00000000-0000-4000-8000-000000000002",
+    "challenge_nonce": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "collected_at": 1792857600,
+    "version": 1,
+    "platform": "android",
+    "collector_version": 8,
+    "probe_results": {
+      "app_identity": {
+        "status": "ok",
+        "package_name": "com.example.app",
+        "version_name": "2.4.1",
+        "version_code": 241,
+        "debuggable": false,
+        "allow_backup": false,
+        "cert_sha256": [
+          "1b38e2a5a1b0a2a8c6a5b04a8a7c5b7fbfc1c6f0d6a7a7d1bd2c5fa2b1d0a3c4"
+        ],
+        "current_signers": [
+          "1b38e2a5a1b0a2a8c6a5b04a8a7c5b7fbfc1c6f0d6a7a7d1bd2c5fa2b1d0a3c4"
+        ],
+        "signing_lineage": [
+          "1b38e2a5a1b0a2a8c6a5b04a8a7c5b7fbfc1c6f0d6a7a7d1bd2c5fa2b1d0a3c4"
+        ],
+        "apk_sha256": "6f0c1d2e3a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f",
+        "split_apks": [
+          {
+            "name": "split_config.arm64_v8a.apk",
+            "sha256": "c6c44c7bcd69f06b7a7a3e3c93f4f1869abb38ca56a1bede8ec309250a574036"
+          }
+        ],
+        "installer_package": "com.android.vending",
+        "source_dir": "/data/app/com.example.app-1/base.apk"
+      },
+      "debug_state": {
+        "status": "ok",
+        "debugger_connected": false,
+        "waiting_for_debugger": false
+      },
+      "root_files": {
+        "status": "ok",
+        "found_paths": [],
+        "build_tags": "release-keys",
+        "test_keys": false
+      },
+      "system_properties": {
+        "status": "ok",
+        "properties": {
+          "ro.secure": "1",
+          "ro.debuggable": "0",
+          "ro.build.type": "user",
+          "ro.build.tags": "release-keys",
+          "ro.boot.verifiedbootstate": "green",
+          "ro.boot.flash.locked": "1",
+          "ro.boot.vbmeta.device_state": "locked",
+          "ro.boot.veritymode": "enforcing"
+        }
+      },
+      "runtime_maps": {
+        "status": "ok",
+        "suspicious_tokens": [],
+        "suspicious_line_count": 0,
+        "maps_lines": 412
+      },
+      "tracer": {
+        "status": "ok",
+        "tracer_pid": 0,
+        "seccomp": 2,
+        "no_new_privs": 0
+      },
+      "root_shell": {
+        "status": "ok",
+        "su_path": "",
+        "su_found": false
+      },
+      "selinux": {
+        "status": "ok",
+        "mode": "enforcing",
+        "getenforce": "Enforcing",
+        "enforce_value": "1"
+      },
+      "mounts": {
+        "status": "ok",
+        "protected_rw_mounts": []
+      },
+      "frida_ports": {
+        "status": "ok",
+        "open_ports": []
+      },
+      "instrumentation_threads": {
+        "status": "ok",
+        "frida_threads": [],
+        "glib_threads": [],
+        "token_threads": [],
+        "thread_count": 42
+      },
+      "exec_mappings": {
+        "status": "ok",
+        "wx_mappings": 0,
+        "wx_bytes": 0,
+        "deleted_exec_mappings": 0,
+        "deleted_exec_own_code": 0,
+        "deleted_exec_jit": 1,
+        "anon_exec_labeled": 1,
+        "anon_exec_unlabeled": 0,
+        "anon_exec_unlabeled_bytes": 0,
+        "maps_lines": 412,
+        "samples": []
+      },
+      "code_integrity": {
+        "status": "ok",
+        "checked": true,
+        "diff_bytes": 0,
+        "core_diff_bytes": 0,
+        "ext_diff_bytes": 0,
+        "ext_libs_diff": 0,
+        "app_diff_bytes": 0,
+        "app_libs_diff": 0,
+        "diffed_libs": "",
+        "protect_restore_failures": 0,
+        "elapsed_ms": 180,
+        "core_compared_bytes": 614400,
+        "core_expected_bytes": 614400,
+        "core_skipped_bytes": 0,
+        "core_unreadable_bytes": 0,
+        "core_complete": true,
+        "ext_compared_bytes": 2097152,
+        "ext_expected_bytes": 2097152,
+        "ext_skipped_bytes": 0,
+        "ext_unreadable_bytes": 0,
+        "ext_complete": true,
+        "app_compared_bytes": 4194304,
+        "app_expected_bytes": 4194304,
+        "app_skipped_bytes": 0,
+        "app_unreadable_bytes": 0,
+        "app_complete": true
+      },
+      "developer_settings": {
+        "status": "ok",
+        "developer_options_enabled": false,
+        "adb_enabled": false
+      },
+      "emulator": {
+        "status": "ok",
+        "suspected": false,
+        "reasons": [],
+        "model": "Pixel 8",
+        "manufacturer": "Google",
+        "product": "shiba",
+        "hardware": "shiba"
+      },
+      "device": {
+        "status": "ok",
+        "release": "14",
+        "sdk_int": 34,
+        "security_patch": "2026-10-01",
+        "manufacturer": "Google",
+        "brand": "google",
+        "model": "Pixel 8",
+        "device": "shiba",
+        "build_id": "AP2A.240905.003",
+        "fingerprint": "google/shiba/shiba:14/AP2A.240905.003/12231197:user/release-keys",
+        "abi": "arm64-v8a",
+        "page_size": 4096
+      },
+      "network": {
+        "status": "ok",
+        "vpn_active": false,
+        "http_proxy_configured": false,
+        "transports": [
+          "wifi"
+        ],
+        "interfaces": [
+          "wlan0"
+        ]
+      },
+      "location": {
+        "status": "ok",
+        "permission": "precise",
+        "latitude": 51.5072,
+        "longitude": -0.1276,
+        "accuracy_m": 35.0,
+        "age_seconds": 10,
+        "provider": "fused",
+        "fix_time": 1792857590
+      },
+      "mock_location": {
+        "status": "ok",
+        "permission": "precise",
+        "mock": false,
+        "age_seconds": 10,
+        "fix_time": 1792857590
+      }
+    },
+    "enabled_measurements": [
+      "location",
+      "mock_location"
+    ]
+  }
+}

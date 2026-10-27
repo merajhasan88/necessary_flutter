@@ -1,0 +1,22 @@
+{
+  "name": "necessary-sample-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A sample backend for the necessary plugin, written from its integration guide",
+  "license": "Apache-2.0",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc -p .",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "ajv": "8.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "6.0.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

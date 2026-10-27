@@ -1,0 +1,110 @@
+{
+  "description": "The same iPhone with the app-code comparison requested, one image unreadable.",
+  "plan": {
+    "required_probes": [
+      "app_identity",
+      "code_signing",
+      "debugger",
+      "jailbreak_files",
+      "sandbox",
+      "dyld_images",
+      "code_integrity"
+    ],
+    "optional_probes": []
+  },
+  "expect": "partial",
+  "why": "Two of three app images were compared: a comparison of part of the app's code, never a complete clean one.",
+  "report": {
+    "installation_id": "00000000-0000-4000-8000-000000000001",
+    "challenge_id": "00000000-0000-4000-8000-000000000002",
+    "challenge_nonce": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "collected_at": 1792857600,
+    "version": 1,
+    "platform": "ios",
+    "collector_version": 5,
+    "probe_results": {
+      "app_identity": {
+        "status": "ok",
+        "bundle_id": "com.example.app",
+        "executable_sha256": "8e1f0a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7",
+        "version_name": "2.4.1",
+        "version_code": "241",
+        "executable_bytes": 487032
+      },
+      "code_signing": {
+        "status": "ok",
+        "signing_identifier": "com.example.app",
+        "team_identifier": "ABCDE12345",
+        "get_task_allow": false,
+        "signed": true,
+        "entitlement_count": 4
+      },
+      "debugger": {
+        "status": "ok",
+        "traced": false
+      },
+      "jailbreak_files": {
+        "status": "ok",
+        "found_paths": [],
+        "checked_count": 20
+      },
+      "sandbox": {
+        "status": "ok",
+        "write_outside_sandbox_succeeded": false
+      },
+      "dyld_images": {
+        "status": "ok",
+        "suspicious_tokens": [],
+        "suspicious_image_count": 0,
+        "image_count": 438
+      },
+      "code_integrity": {
+        "status": "ok",
+        "checked": true,
+        "app_compared_bytes": 4743968,
+        "app_diff_bytes": 0,
+        "app_libs_diff": 0,
+        "diffed_libs": "",
+        "app_images_expected": 3,
+        "app_images_compared": 2,
+        "app_images_unreadable": 1,
+        "app_images_skipped": 0,
+        "app_expected_bytes": 10645480,
+        "app_unreadable_bytes": 5901512,
+        "app_skipped_bytes": 0,
+        "app_complete": false,
+        "main_executable_compared": true,
+        "system_images_unreadable": 435,
+        "core_compared_bytes": 0,
+        "core_diff_bytes": 0,
+        "diff_bytes": 0,
+        "ext_compared_bytes": 0,
+        "ext_diff_bytes": 0,
+        "ext_libs_diff": 0,
+        "system_bucket_reason": "dyld_shared_cache_has_no_backing_files",
+        "app_segment_compared_bytes": 15040512,
+        "app_segment_diff_bytes": 0,
+        "app_images_not_compared": {
+          "Frameworks/App.framework/App": "unreadable: 4096 of 5914624 bytes read"
+        }
+      },
+      "device": {
+        "status": "ok",
+        "os_version": "17.6.1",
+        "os_build": "21G93",
+        "model_identifier": "iPhone15,2",
+        "page_size": 16384
+      },
+      "network": {
+        "status": "ok",
+        "vpn_active": false,
+        "http_proxy_configured": false,
+        "scoped_interfaces": [
+          "en0",
+          "pdp_ip0"
+        ]
+      }
+    },
+    "enabled_measurements": []
+  }
+}

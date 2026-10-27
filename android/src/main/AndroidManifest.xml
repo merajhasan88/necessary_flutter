@@ -1,0 +1,40 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- What the plugin's own features need; all normal permissions, granted at
+         install. The location permissions are the app's to declare and ask for:
+         the plugin measures the location only where the app has them. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The network probe asks the connectivity service whether a VPN or a proxy
+         is in use. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Step-up prompts (BiometricPrompt, device credential or biometric). -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!-- screen_capture on Android 15 and later: whether this app's window is being
+         recorded. -->
+    <uses-permission android:name="android.permission.DETECT_SCREEN_RECORDING" />
+    <!-- Screen protection: other apps' windows are not drawn over the protected
+         window (Android 12 and later). -->
+    <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
+    <queries>
+        <!-- The apps that can hold Accessibility, a keyboard, notification access
+             or device administration, so the accessibility, notification_access
+             and other_access measurements can read who installed each. -->
+        <intent>
+            <action android:name="android.accessibilityservice.AccessibilityService"/>
+        </intent>
+        <intent>
+            <action android:name="android.view.InputMethod"/>
+        </intent>
+        <intent>
+            <action android:name="android.service.notification.NotificationListenerService"/>
+        </intent>
+        <intent>
+            <action android:name="android.app.action.DEVICE_ADMIN_ENABLED"/>
+        </intent>
+        <!-- Remote-control apps scammers have victims install; the same list as
+             IntegrityProbeManager.remoteAccessPackages. -->
+        <package android:name="com.anydesk.anydeskandroid"/>
+        <package android:name="com.teamviewer.quicksupport.market"/>
+        <package android:name="com.carriez.flutter_hbb"/>
+        <package android:name="com.sand.airdroid"/>
+    </queries>
+</manifest>
