@@ -178,7 +178,10 @@ A new key is made, the person unlocks it to sign its proof, and your backend tak
 alone; approvals use it from then on. The call goes to `/v1/installations/stepup-key`, or to your API's
 own path: `StepUpOptions(reenrolPath: ...)`. Until your backend has taken the new key — the person
 cancelled the prompt, the password was wrong, the answer was lost — approvals fail with
-`STEPUP_REENROL_PENDING`, across restarts too: call `reenrolStepUp` again.
+`STEPUP_REENROL_PENDING`, across restarts too: call `reenrolStepUp` again. The same holds for a key the
+phone made after the installation was registered — the screen lock was off at the first `start()` and
+set later, say — since your backend takes a step-up key only at an installation's first registration:
+`start()` reports `stepUpUnavailable` `STEPUP_REENROL_PENDING`, and re-enrolment registers the key.
 
 ## The app PIN: the person's PIN for one request
 

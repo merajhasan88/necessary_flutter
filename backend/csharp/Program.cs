@@ -526,8 +526,15 @@ public sealed class Backend(JsonSchema schema, JsonObject definitions, string? t
             {
                 // The thumbprint is the identity: the same key is the same installation,
                 // whatever ID it proposes. A step-up key offered now is not taken -- only
-                // re-enrolment replaces one.
-                return new JsonObject { ["installation_id"] = held };
+                // re-enrolment replaces one -- so the answer says whether it is the one held,
+                // and the app asks for re-enrolment rather than sign with a key this backend lacks.
+                var bound = _installations[held].StepUp;
+                return new JsonObject
+                {
+                    ["installation_id"] = held, ["stepup_key_registered"] = bound is not null,
+                    ["stepup_key_matches"] = stepUp is null ? null
+                        : bound is not null && Thumbprint(bound.Jwk) == Thumbprint(stepUp.Jwk),
+                };
             }
             if (_installations.ContainsKey(installationId))
             {
@@ -540,7 +547,7 @@ public sealed class Backend(JsonSchema schema, JsonObject definitions, string? t
                 body["key_security"]?.DeepClone(), stepUp);
             _byThumbprint[key] = installationId;
         }
-        return new JsonObject { ["installation_id"] = installationId };
+        return new JsonObject { ["installation_id"] = installationId, ["stepup_key_registered"] = stepUp is not null };
     }
 
     /// <summary>Section 3, step-up: the key and how the phone says it is unlocked.</summary>

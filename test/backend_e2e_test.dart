@@ -166,20 +166,25 @@ class _StepUpKey extends NativeStepUpKey {
   /// The screen lock removed: the key can no longer sign.
   bool dead = false;
 
+  /// Whether the phone has a screen lock: without one no key is made.
+  bool locked = true;
+
   @override
   Future<StepUpKeyMetadata> getOrCreateKey({
     required String factor,
     required String mode,
     required int windowSeconds,
-  }) async => StepUpKeyMetadata(
-    publicKey: key.jwk,
-    factor: factor,
-    mode: mode,
-    windowSeconds: windowSeconds,
-    securityLevel: 'software',
-    hardwareBacked: false,
-    created: false,
-  );
+  }) async => !locked
+      ? throw NativeKeyException('STEPUP_NO_DEVICE_CREDENTIAL', 'no lock')
+      : StepUpKeyMetadata(
+          publicKey: key.jwk,
+          factor: factor,
+          mode: mode,
+          windowSeconds: windowSeconds,
+          securityLevel: 'software',
+          hardwareBacked: false,
+          created: false,
+        );
 
   @override
   Future<String> sign(String payloadBase64Url, {required String reason}) async {
@@ -718,6 +723,50 @@ void main() {
       await _releasePinChecks();
       expect(await trust.send(await last), done);
     }, skip: _testToken == null ? 'NECESSARY_TEST_TOKEN is not set' : false);
+
+    test('a screen lock set only after the installation was registered: its '
+        'step-up key waits for re-enrolment, then approves', () async {
+      final _StepUpKey stepUpKey = _StepUpKey()..locked = false;
+      final DeviceTrust trust = _trust(
+        stepUp: const StepUpOptions(),
+        stepUpKey: stepUpKey,
+      );
+      await trust.start();
+      expect(trust.stepUpUnavailable?.code, 'STEPUP_NO_DEVICE_CREDENTIAL');
+      final String account = await _signIn(trust, password: 'lock owner');
+      // The lock set again, the app started again: the key it makes now is
+      // not one the backend took.
+      stepUpKey.locked = true;
+      await trust.start();
+      expect(trust.stepUpUnavailable?.code, 'STEPUP_REENROL_PENDING');
+      Future<Map<String, dynamic>> sensitive() async => trust.send(
+        await trust.signRequest(
+          method: 'POST',
+          path: '/v1/demo/sensitive',
+          bearer: account,
+          body: '{"payee":"payee-7"}',
+          stepUp: true,
+        ),
+      );
+      await expectLater(
+        sensitive(),
+        throwsA(
+          isA<NativeKeyException>().having(
+            (NativeKeyException e) => e.code,
+            'code',
+            'STEPUP_REENROL_PENDING',
+          ),
+        ),
+      );
+      expect(
+        await trust.reenrolStepUp(
+          session: account,
+          reauthentication: <String, dynamic>{'password': 'lock owner'},
+        ),
+        containsPair('stepup_key_registered', true),
+      );
+      expect(await sensitive(), containsPair('done', '/v1/demo/sensitive'));
+    });
 
     test("the guide's protocol errors, each acted on once", () async {
       final DeviceTrust trust = _trust();

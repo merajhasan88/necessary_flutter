@@ -404,8 +404,15 @@ class Backend {
     if (held !== undefined) {
       // The thumbprint is the identity: the same key is the same installation,
       // whatever ID it proposes. A step-up key offered now is not taken --
-      // only re-enrolment replaces one.
-      return { installation_id: held };
+      // only re-enrolment replaces one -- so the answer says whether it is the
+      // one held, and the app asks for re-enrolment rather than sign with a
+      // key this backend lacks.
+      const bound = (this.installations.get(held) as Installation).stepUp;
+      return {
+        installation_id: held, stepup_key_registered: bound !== null,
+        stepup_key_matches: stepUp === null ? null
+          : bound !== null && thumbprint(bound.jwk) === thumbprint(stepUp.jwk),
+      };
     }
     if (this.installations.has(installationId)) {
       throw new Refusal(409, "installation_id_taken", "This installation ID belongs to another key.");
@@ -419,7 +426,7 @@ class Backend {
       stepUp,
     });
     this.byThumbprint.set(key, installationId);
-    return { installation_id: installationId };
+    return { installation_id: installationId, stepup_key_registered: stepUp !== null };
   }
 
   /** Section 3, step-up: the key and how the phone says it is unlocked. */

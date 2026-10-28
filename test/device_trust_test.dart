@@ -570,6 +570,69 @@ void main() {
     expect((await _approve(trust)).headers.keys, contains('X-Step-Up-Proof'));
   });
 
+  test(
+    'a backend that says it does not hold the step-up key offered leaves '
+    'approvals waiting for re-enrolment; one that says it does clears that',
+    () async {
+      final _Backend backend = _Backend(<String, List<Object>>{
+        '/v1/installations/register': <Object>[
+          <String, dynamic>{
+            'installation_id': 'proposed-id',
+            'stepup_key_registered': false,
+            'stepup_key_matches': false,
+          },
+          <String, dynamic>{
+            'installation_id': 'proposed-id',
+            'stepup_key_registered': true,
+            'stepup_key_matches': true,
+          },
+        ],
+      });
+      final _Store store = _Store();
+      final DeviceTrust trust = _trust(
+        backend,
+        store: store,
+        stepUp: const StepUpOptions(),
+      );
+      await trust.start();
+      expect(trust.stepUpUnavailable?.code, 'STEPUP_REENROL_PENDING');
+      await expectLater(_approve(trust), _reenrolPending);
+      expect(store.reenrolPending, isTrue);
+      await trust.start();
+      expect(trust.stepUpUnavailable, isNull);
+      expect(store.reenrolPending, isFalse);
+      expect((await _approve(trust)).headers.keys, contains('X-Step-Up-Proof'));
+    },
+  );
+
+  test(
+    'a step-up key the phone could not make at registration, made at the '
+    'next start, waits for re-enrolment even where the backend says nothing',
+    () async {
+      final _Backend backend = _Backend();
+      final _Store store = _Store();
+      final DeviceTrust trust = _trust(
+        backend,
+        store: store,
+        stepUp: const StepUpOptions(),
+        stepUpKey: _FlakyStepUpKey(),
+      );
+      await trust.start();
+      expect(trust.stepUpUnavailable?.code, 'STEPUP_NO_DEVICE_CREDENTIAL');
+      await trust.start();
+      expect(trust.stepUpUnavailable?.code, 'STEPUP_REENROL_PENDING');
+      await expectLater(_approve(trust), _reenrolPending);
+      expect(
+        await trust.reenrolStepUp(
+          session: 'account-session',
+          reauthentication: <String, dynamic>{'password': 'pw'},
+        ),
+        containsPair('stepup_key_registered', true),
+      );
+      expect((await _approve(trust)).headers.keys, contains('X-Step-Up-Proof'));
+    },
+  );
+
   test('re-enrolment with step-up off refuses before sending', () async {
     final _Backend backend = _Backend();
     final DeviceTrust trust = _trust(backend);

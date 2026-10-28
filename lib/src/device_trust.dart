@@ -341,10 +341,11 @@ class DeviceTrust {
       _hint = hint;
       _hintRead = true;
     }
+    final StepUpKeyMetadata? offered = await _prepareStepUpKey(generation);
     final Map<String, dynamic> answer = await client.registerInstallation(
       identity,
       _hint,
-      stepUpKey: await _prepareStepUpKey(generation),
+      stepUpKey: offered,
     );
     _current(generation);
     // The key is the installation's identity: a backend that holds it under
@@ -356,11 +357,53 @@ class DeviceTrust {
       _saving = saving;
       await saving;
     }
+    await _settleStepUpKey(answer, offered, generation);
     await onRegistered?.call(answer);
   }
 
+  /// Whether the backend holds the step-up key offered: it takes one only
+  /// when it first registers an installation, so a key made later -- after the
+  /// screen lock was removed and set again, say -- it takes by re-enrolment
+  /// alone. Its answer says so (`stepup_key_matches`, or for an installation
+  /// new to it `stepup_key_registered`); until it holds this key, approvals
+  /// wait for reenrolStepUp, across restarts too. A registration without a
+  /// key, the phone unable to make one, leaves any key made later waiting the
+  /// same way. A backend whose answer says nothing is taken at its word unless
+  /// a re-enrolment is pending.
+  Future<void> _settleStepUpKey(
+    Map<String, dynamic> answer,
+    StepUpKeyMetadata? offered,
+    int generation,
+  ) async {
+    if (stepUp == null) {
+      return;
+    }
+    final Object? matches = answer['stepup_key_matches'];
+    final Object? registered = answer['stepup_key_registered'];
+    final bool? bound = offered == null
+        ? null
+        : matches is bool
+        ? matches
+        : registered is bool
+        ? registered
+        : null;
+    if (offered == null || bound == false) {
+      await _store.setStepUpReenrolPending(true);
+    } else if (bound == true) {
+      await _store.setStepUpReenrolPending(false);
+    }
+    final bool pending =
+        offered != null && bound != true && await _store.stepUpReenrolPending();
+    _current(generation);
+    if (pending) {
+      _offeredStepUpKey = null;
+      stepUpUnavailable = _reenrolPending();
+    }
+  }
+
   /// The step-up key as [stepUp] asks: an existing key is kept as it is.
-  /// Step-up is optional, so a key the phone cannot make leaves it off.
+  /// Step-up is optional, so a key the phone cannot make leaves it off. Its
+  /// use waits for the backend's answer (_settleStepUpKey).
   Future<StepUpKeyMetadata?> _prepareStepUpKey(int generation) async {
     final StepUpOptions? options = stepUp;
     if (options == null) {
@@ -379,23 +422,17 @@ class DeviceTrust {
     } on NativeKeyException catch (error) {
       unavailable = error;
     }
-    // A re-enrolment left unfinished -- the person cancelled, the backend
-    // refused, its answer was lost: the backend still holds the key this one
-    // replaced, so approvals wait for reenrolStepUp, even across a restart.
-    if (key != null && await _store.stepUpReenrolPending()) {
-      key = null;
-      unavailable = _reenrolPending();
-    }
     _current(generation);
     stepUpUnavailable = unavailable;
     return _offeredStepUpKey = key;
   }
 
-  /// What approvals answer while a re-enrolment is unfinished.
+  /// What approvals answer while the backend does not hold the step-up key.
   static NativeKeyException _reenrolPending() => NativeKeyException(
     'STEPUP_REENROL_PENDING',
-    'The step-up key was replaced, and the backend has not taken the new one '
-        'yet: reenrolStepUp() again.',
+    'The backend does not hold this step-up key -- a re-enrolment unfinished, '
+        'or a key made after the installation was registered: '
+        'reenrolStepUp() first.',
   );
 
   /// A scan: under the installation session -- or, for a scan that approves

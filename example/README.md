@@ -59,7 +59,10 @@ carries a ✓ when the backend did what it should, a red ✗ when it did not.
 
 If the phone's screen lock is removed and set again, the step-up key dies: step 7 then shows `The phone
 said STEPUP_KEY_INVALIDATED`. Tap **Re-enrol the step-up key** and unlock with the passcode — expect ✓
-`{"stepup_key_registered":true}` — and step 7 passes again. The new key is that account's alone.
+`{"stepup_key_registered":true}` — and step 7 passes again. The new key is that account's alone. If the
+lock was off at step 1 and set afterwards, **Start again** says `step-up off here
+(STEPUP_REENROL_PENDING)`: the backend took the installation without a step-up key, so re-enrol the same
+way after step 4.
 
 The app PIN belongs to the account, not to the phone. Phones signed in with the same handle share it: a
 PIN set on one unlocks requests on the other, and before any is set, step 9 answers `app_pin_not_set`.

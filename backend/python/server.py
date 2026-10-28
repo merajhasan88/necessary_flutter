@@ -359,8 +359,13 @@ class Backend:
             if held is not None:
                 # The thumbprint is the identity: the same key is the same
                 # installation, whatever ID it proposes. A step-up key offered
-                # now is not taken -- only re-enrolment replaces one.
-                return {"installation_id": held}
+                # now is not taken -- only re-enrolment replaces one -- so the
+                # answer says whether it is the one held, and the app asks for
+                # re-enrolment rather than sign with a key this backend lacks.
+                bound = self.installations[held]["step_up"]
+                return {"installation_id": held, "stepup_key_registered": bound is not None,
+                        "stepup_key_matches": (None if step_up is None else bound is not None
+                                               and thumbprint(bound["jwk"]) == thumbprint(step_up["jwk"]))}
             if installation_id in self.installations:
                 raise Refusal(409, "installation_id_taken",
                               "This installation ID belongs to another key.")
@@ -374,7 +379,7 @@ class Backend:
                 "step_up": step_up,
             }
             self.by_thumbprint[key] = installation_id
-        return {"installation_id": installation_id}
+        return {"installation_id": installation_id, "stepup_key_registered": step_up is not None}
 
     def _step_up_key(self, body, installation_thumbprint):
         """Section 3, step-up: the key and how the phone says it is unlocked."""

@@ -8,7 +8,9 @@ the section numbers in the code:
 - **Registration** (section 1): an EC P-256 key whose point is on the curve; the key's thumbprint as the
   installation's identity, so the same key gets back the installation it has; a known ID under another
   key refused; the reinstall hint keyed before it is kept; `key_security` recorded, never relied on; the
-  step-up key taken only with a new installation, never the installation key itself.
+  step-up key taken only with a new installation, never the installation key itself — and the answer
+  says whether it holds one (`stepup_key_registered`) and whether the one offered is it
+  (`stepup_key_matches`).
 - **Proof of possession** (section 1): a key challenge that stores nothing — its payload carries an HMAC
   under a key of the backend's — answered once, consumed only after the signature verifies, for an
   installation session of ten minutes.

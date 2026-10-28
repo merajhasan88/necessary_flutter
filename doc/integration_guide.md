@@ -411,7 +411,12 @@ POST /v1/installations/stepup-key                    with step-up on: a new key 
 - The rest of a report's answer is yours, in the same `integrity` object: tell the app what to do next,
   never the score or the reasons (section 7).
 - With step-up on (section 3), the registration also carries `stepup_public_key` and `stepup_key_auth`,
-  and the requests your backend chooses carry the person's approval.
+  and the requests your backend chooses carry the person's approval. Take a step-up key only when you
+  first register an installation; a key the phone made later — after its screen lock was removed and
+  set again, say — you take by re-enrolment alone. Say so in the answer: `stepup_key_registered`,
+  whether you hold a step-up key for this installation, and, when the app offered one for an
+  installation you already held, `stepup_key_matches`, whether it is that one. Where you hold another
+  or none, the plugin asks the app to re-enrol rather than sign approvals with a key you do not hold.
 
 ### Errors
 
