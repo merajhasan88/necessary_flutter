@@ -98,20 +98,27 @@ class StepUpKeyMetadata {
   }
 }
 
+/// Where a backend takes a re-enrolled step-up key by default (the public
+/// guide, section 4).
+const String stepUpReenrolPath = '/v1/installations/stepup-key';
+
 /// How the app wants its step-up key made (the public guide, section 3):
 /// [factor] `passcode` or `biometric`; [mode] `per_use`, or `windowed` with
 /// [windowSeconds] from 1. Android 9 and 10 cannot make a per-use passcode
-/// key and make a windowed one; iOS makes per-use keys only.
+/// key and make a windowed one; iOS makes per-use keys only. [reenrolPath]
+/// is where the backend takes a new key (DeviceTrust.reenrolStepUp).
 class StepUpOptions {
   const StepUpOptions({
     this.factor = 'passcode',
     this.mode = 'per_use',
     this.windowSeconds = 0,
+    this.reenrolPath = stepUpReenrolPath,
   });
 
   final String factor;
   final String mode;
   final int windowSeconds;
+  final String reenrolPath;
 
   /// A key made with other values, or already made: whether it satisfies
   /// these options -- the same factor (a backend refuses any other), and a

@@ -470,6 +470,10 @@ class Backend:
         step_up = installation.get("step_up")
         if not raw_b64 or not request.headers.get("X-Step-Up-Signature") or step_up is None:
             raise Refusal(403, "needs_step_up", "This request needs the person's approval.")
+        # A re-enrolled key approves for the account that re-enrolled it alone.
+        if step_up.get("account") not in (None, session["account"]):
+            raise Refusal(403, "step_up_not_accepted", "The step-up key is another account's.",
+                          {"check": "account"})
         try:
             raw = b64url_decode(raw_b64)
             proof = json.loads(raw.decode("utf-8"))
@@ -495,6 +499,44 @@ class Backend:
                 or abs(self.now() - timestamp) > CLOCK_WINDOW_SECONDS):
             raise Refusal(403, "step_up_not_accepted", "The approval is out of time.",
                           {"check": "timestamp"})
+
+    # --- Section 3: re-enrolment, a new step-up key for this account alone.
+
+    def reenrol_step_up(self, request, body):
+        session, installation, nonce = self.authenticate(request, ("account",))
+        step_up = self._step_up_key(body, installation["thumbprint"])
+        if step_up is None:
+            raise Refusal(400, "bad_request", "A new step-up key is required.",
+                          {"field": "stepup_public_key"})
+        try:
+            raw = b64url_decode(body.get("stepup_key_proof"))
+            proof = json.loads(raw.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            raw, proof = b"", {}
+        # Every check of the new key before the password, so that this call
+        # cannot serve to guess it.
+        if not verifies(step_up["jwk"], raw, body.get("stepup_key_signature")):
+            raise Refusal(403, "step_up_not_accepted", "The new key's proof does not verify.",
+                          {"check": "signature"})
+        expected = {"version": 1, "purpose": "stepup_reenrol",
+                    "installation_id": session["installation_id"],
+                    "stepup_key_thumbprint": thumbprint(step_up["jwk"]), "nonce": nonce}
+        for field, value in expected.items():
+            if not isinstance(proof, dict) or proof.get(field) != value:
+                raise Refusal(403, "step_up_not_accepted",
+                              "The new key's proof is for another request.", {"check": field})
+        timestamp = proof.get("timestamp")
+        if (isinstance(timestamp, bool) or not isinstance(timestamp, int)
+                or abs(self.now() - timestamp) > CLOCK_WINDOW_SECONDS):
+            raise Refusal(403, "step_up_not_accepted", "The new key's proof is out of time.",
+                          {"check": "timestamp"})
+        self._reauthenticate(self.accounts[session["account"]], session["account"],
+                             body.get("password"))
+        with self.lock:
+            # Another account on the phone, which needs only the installation
+            # key, gains no step-up from it.
+            installation["step_up"] = dict(step_up, account=session["account"])
+        return {"stepup_key_registered": True}
 
     # --- Section 3: the app PIN.
 
@@ -650,6 +692,7 @@ ROUTES = {
     "/v1/installations/verify": lambda b, r, body: b.verify(body),
     "/v1/integrity/challenge": lambda b, r, body: b.scan_challenge(r, body),
     "/v1/integrity/report": lambda b, r, body: b.report(r, body),
+    "/v1/installations/stepup-key": lambda b, r, body: b.reenrol_step_up(r, body),
     "/v1/account/app-pin": lambda b, r, body: b.set_app_pin(r, body),
     "/v1/account/app-pin/proof": lambda b, r, body: b.prove_app_pin(r, body),
     "/v1/demo/sign-in": lambda b, r, body: b.sign_in(r, body),

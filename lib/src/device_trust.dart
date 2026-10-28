@@ -418,6 +418,89 @@ class DeviceTrust {
     return reportId == null ? proof : proof.withIntegrityReport(reportId);
   }
 
+  /// Re-enrols the step-up key under the account [session], with the
+  /// person's own [reauthentication] -- the account's password, say:
+  /// `{'password': ...}`. For a key the phone has lost or can no longer use
+  /// -- the screen lock removed (`STEPUP_KEY_INVALIDATED`) -- or one made for
+  /// other options: the person unlocks the new key to sign its proof, the
+  /// phone showing [reason], and the backend takes it for that account alone
+  /// (the public guide, section 3). Approvals use it from then on.
+  Future<Map<String, dynamic>> reenrolStepUp({
+    required String session,
+    Map<String, dynamic> reauthentication = const <String, dynamic>{},
+    String reason = 'Confirm your new step-up key',
+  }) async {
+    final StepUpOptions? options = stepUp;
+    if (options == null) {
+      throw NativeKeyException(
+        'STEPUP_OFF',
+        'Step-up is off: DeviceTrust(stepUp: StepUpOptions(...)).',
+      );
+    }
+    final InstallationIdentity identity = await loadIdentity();
+    _stepUpKey.configuredMode = options.mode;
+    Future<StepUpKeyMetadata> newKey({required bool replace}) async {
+      if (replace) {
+        await _stepUpKey.deleteKey();
+      }
+      return _stepUpKey.getOrCreateKey(
+        factor: options.factor,
+        mode: options.mode,
+        windowSeconds: options.windowSeconds,
+      );
+    }
+
+    StepUpKeyMetadata key = await newKey(replace: false);
+    if (!key.created && !options.accepts(key)) {
+      key = await newKey(replace: true);
+    }
+    // The new key signs a proof bound to this request's own nonce, which the
+    // request proof then signs too.
+    final List<int> nonce = freshNonce();
+    Future<Map<String, String>> proveWith(StepUpKeyMetadata current) async {
+      final String payload = stepUpReenrolProof(
+        installationId: identity.installationId,
+        stepUpKeyThumbprint: current.thumbprint,
+        nonce: base64UrlNoPadding(nonce),
+        timestamp: DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000,
+      );
+      return <String, String>{
+        'stepup_key_proof': payload,
+        'stepup_key_signature': await _stepUpKey.sign(payload, reason: reason),
+      };
+    }
+
+    Map<String, String> keyProof;
+    try {
+      keyProof = await proveWith(key);
+    } on NativeKeyException catch (error) {
+      // A key that died with the screen lock is found only when it signs.
+      if (error.code != 'STEPUP_KEY_INVALIDATED' &&
+          error.code != 'STEPUP_KEY_NOT_FOUND') {
+        rethrow;
+      }
+      key = await newKey(replace: true);
+      keyProof = await proveWith(key);
+    }
+    final RequestProof proof = await proofs.signRequest(
+      identity: identity,
+      method: 'POST',
+      path: options.reenrolPath,
+      bearerToken: session,
+      encodedBody: jsonEncode(<String, dynamic>{
+        ...reauthentication,
+        'stepup_public_key': key.publicKey,
+        'stepup_key_auth': key.authJson,
+        ...keyProof,
+      }),
+      nonce: nonce,
+    );
+    final Map<String, dynamic> answer = await send(proof);
+    _offeredStepUpKey = key;
+    stepUpUnavailable = null;
+    return answer;
+  }
+
   /// Sends [proof]'s request through the plugin's transport.
   Future<Map<String, dynamic>> send(RequestProof proof) =>
       client.sendSigned(proof);

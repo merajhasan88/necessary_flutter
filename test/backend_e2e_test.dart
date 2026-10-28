@@ -151,7 +151,10 @@ class _MemoryStore extends InstallationStore {
 }
 
 class _StepUpKey extends NativeStepUpKey {
-  final _SoftwareKey key = _SoftwareKey();
+  _SoftwareKey key = _SoftwareKey();
+
+  /// The screen lock removed: the key can no longer sign.
+  bool dead = false;
 
   @override
   Future<StepUpKeyMetadata> getOrCreateKey({
@@ -169,10 +172,21 @@ class _StepUpKey extends NativeStepUpKey {
   );
 
   @override
-  Future<String> sign(
-    String payloadBase64Url, {
-    required String reason,
-  }) async => key.sign(payloadBase64Url);
+  Future<String> sign(String payloadBase64Url, {required String reason}) async {
+    if (dead) {
+      throw NativeKeyException(
+        'STEPUP_KEY_INVALIDATED',
+        'the lock was removed',
+      );
+    }
+    return key.sign(payloadBase64Url);
+  }
+
+  @override
+  Future<void> deleteKey() async {
+    key = _SoftwareKey();
+    dead = false;
+  }
 }
 
 /// Answers with the contract's complete Android sample, whatever is asked.
@@ -212,16 +226,19 @@ class _Hint extends ReinstallHintReader {
   );
 }
 
-DeviceTrust _trust({StepUpOptions? stepUp, AppPinOptions? appPin}) =>
-    DeviceTrust.over(
-      HttpTransport(_backend!),
-      stepUp: stepUp,
-      appPin: appPin,
-      store: _MemoryStore(),
-      collector: _SampleCollector(),
-      hintReader: _Hint(),
-      stepUpKey: _StepUpKey(),
-    );
+DeviceTrust _trust({
+  StepUpOptions? stepUp,
+  AppPinOptions? appPin,
+  _StepUpKey? stepUpKey,
+}) => DeviceTrust.over(
+  HttpTransport(_backend!),
+  stepUp: stepUp,
+  appPin: appPin,
+  store: _MemoryStore(),
+  collector: _SampleCollector(),
+  hintReader: _Hint(),
+  stepUpKey: stepUpKey ?? _StepUpKey(),
+);
 
 Future<void> _control(String path, Map<String, dynamic> body) async {
   final http.Response response = await http.post(
@@ -440,6 +457,66 @@ void main() {
           ),
         ),
         _refused('invalid_installation_signature'),
+      );
+    });
+
+    test('re-enrolment: a dead step-up key replaced with the password, for '
+        'that account alone', () async {
+      final _StepUpKey stepUpKey = _StepUpKey();
+      final DeviceTrust trust = _trust(
+        stepUp: const StepUpOptions(),
+        stepUpKey: stepUpKey,
+      );
+      await trust.start();
+      final String account = await _signIn(trust, password: 'key owner');
+      Future<Map<String, dynamic>> sensitive(String session) async =>
+          trust.send(
+            await trust.signRequest(
+              method: 'POST',
+              path: '/v1/demo/sensitive',
+              bearer: session,
+              body: '{"payee":"payee-7"}',
+              stepUp: true,
+            ),
+          );
+      expect(
+        await sensitive(account),
+        containsPair('done', '/v1/demo/sensitive'),
+      );
+      // The screen lock removed: the key the backend holds cannot sign.
+      stepUpKey.dead = true;
+      await expectLater(
+        sensitive(account),
+        throwsA(
+          isA<NativeKeyException>().having(
+            (NativeKeyException e) => e.code,
+            'code',
+            'STEPUP_KEY_INVALIDATED',
+          ),
+        ),
+      );
+      await expectLater(
+        trust.reenrolStepUp(
+          session: account,
+          reauthentication: <String, dynamic>{'password': 'wrong password'},
+        ),
+        _refused('reauthentication_failed'),
+      );
+      expect(
+        await trust.reenrolStepUp(
+          session: account,
+          reauthentication: <String, dynamic>{'password': 'key owner'},
+        ),
+        containsPair('stepup_key_registered', true),
+      );
+      expect(
+        await sensitive(account),
+        containsPair('done', '/v1/demo/sensitive'),
+      );
+      // Another account on the same phone gains no step-up from it.
+      await expectLater(
+        sensitive(await _signIn(trust)),
+        _refused('step_up_not_accepted'),
       );
     });
 

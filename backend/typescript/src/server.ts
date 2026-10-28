@@ -139,7 +139,8 @@ interface Installation {
   platform: string;
   hint: string | null;
   keySecurity: Json;
-  stepUp: { jwk: JsonObject; factor: string; mode: string; windowSeconds: number } | null;
+  // A re-enrolled key carries the account that re-enrolled it.
+  stepUp: { jwk: JsonObject; factor: string; mode: string; windowSeconds: number; account?: string } | null;
 }
 
 interface Session { kind: "installation" | "account"; installationId: string; account?: string; expires: number }
@@ -508,6 +509,10 @@ class Backend {
     if (!proofText || !signature || stepUp === null) {
       throw new Refusal(403, "needs_step_up", "This request needs the person's approval.");
     }
+    // A re-enrolled key approves for the account that re-enrolled it alone.
+    if (stepUp.account !== undefined && stepUp.account !== session.account) {
+      throw new Refusal(403, "step_up_not_accepted", "The step-up key is another account's.", { check: "account" });
+    }
     let raw: Buffer = Buffer.alloc(0);
     let proof: JsonObject = {};
     try {
@@ -532,6 +537,44 @@ class Backend {
     if (!isInt(proof.timestamp) || Math.abs(now() - proof.timestamp) > CLOCK_WINDOW_SECONDS) {
       throw new Refusal(403, "step_up_not_accepted", "The approval is out of time.", { check: "timestamp" });
     }
+  }
+
+  // --- Section 3: re-enrolment, a new step-up key for this account alone.
+
+  async reenrolStepUp(request: Request, body: JsonObject): Promise<JsonObject> {
+    const [session, installation, nonce] = this.authenticate(request, ["account"]);
+    const stepUp = this.stepUpKey(body, installation.thumbprint);
+    if (stepUp === null) {
+      throw new Refusal(400, "bad_request", "A new step-up key is required.", { field: "stepup_public_key" });
+    }
+    let raw: Buffer = Buffer.alloc(0);
+    let proof: JsonObject = {};
+    try {
+      raw = b64urlDecode(body.stepup_key_proof as string);
+      proof = JSON.parse(raw.toString("utf8"));
+    } catch { /* fails the signature below */ }
+    // Every check of the new key before the password, so that this call cannot serve to guess it.
+    if (!verifies(stepUp.jwk, raw, body.stepup_key_signature)) {
+      throw new Refusal(403, "step_up_not_accepted", "The new key's proof does not verify.", { check: "signature" });
+    }
+    const expected: JsonObject = {
+      version: 1, purpose: "stepup_reenrol", installation_id: session.installationId,
+      stepup_key_thumbprint: thumbprint(stepUp.jwk), nonce,
+    };
+    for (const [field, value] of Object.entries(expected)) {
+      if (proof === null || typeof proof !== "object" || proof[field] !== value) {
+        throw new Refusal(403, "step_up_not_accepted", "The new key's proof is for another request.",
+          { check: field });
+      }
+    }
+    if (!isInt(proof.timestamp) || Math.abs(now() - proof.timestamp) > CLOCK_WINDOW_SECONDS) {
+      throw new Refusal(403, "step_up_not_accepted", "The new key's proof is out of time.", { check: "timestamp" });
+    }
+    const account = this.accounts.get(session.account as string) as Account;
+    await this.reauthenticate(account, session.account as string, body.password);
+    // Another account on the phone, which needs only the installation key, gains no step-up from it.
+    installation.stepUp = { ...stepUp, account: session.account as string };
+    return { stepup_key_registered: true };
   }
 
   // --- Section 3: the app PIN.
@@ -703,6 +746,7 @@ const ROUTES: Record<string, Route> = {
   "/v1/installations/verify": (b, r, body) => b.verify(body),
   "/v1/integrity/challenge": (b, r, body) => b.scanChallenge(r, body),
   "/v1/integrity/report": (b, r, body) => b.report(r, body),
+  "/v1/installations/stepup-key": (b, r, body) => b.reenrolStepUp(r, body),
   "/v1/account/app-pin": (b, r, body) => b.setAppPin(r, body),
   "/v1/account/app-pin/proof": (b, r, body) => b.proveAppPin(r, body),
   "/v1/demo/sign-in": (b, r, body) => b.signIn(r, body),

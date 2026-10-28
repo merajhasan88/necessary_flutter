@@ -24,15 +24,16 @@ the section numbers in the code:
 - **Request proofs** (section 3): every field against the request received, the clock window, the
   signature, then the nonce stored once — a proof sent twice is refused.
 - **Step-up and the app PIN** (section 3): the person's approval checked against the request and its
-  proof's nonce; the PIN set with the person's password and kept as a slow keyed verifier, its attempts
-  claimed before comparing, the last wrong one locking it, and the backend's own short-lived proof for
-  one request.
+  proof's nonce; a new step-up key taken by re-enrolment only with the person's password and the new
+  key's proof bound to the request proof's nonce, every check of the key before the password, and kept
+  for that account alone; the PIN set with the person's password and kept as a slow keyed verifier, its
+  attempts claimed before comparing, the last wrong one locking it, and the backend's own short-lived
+  proof for one request.
 
 They are **samples**: one process, everything in memory, secrets made at start, no rate limits and no
 account system beyond a demonstration sign-in. A production backend keeps its records in a database,
 its secrets in a vault, limits how often each call may be made, and decides with its own business
-logic. Re-enrolling a step-up key is not implemented (the plugin's `DeviceTrust` makes no such call);
-the guide's section 3 describes it.
+logic.
 
 ## This sample's own API
 

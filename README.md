@@ -158,10 +158,23 @@ final proof = await trust.signRequest(
 | `mode` | `per_use` (unlocked for every signature) or `windowed` with `windowSeconds` (one unlock for a while; Android only) |
 
 Android 9 and 10 cannot ask for the passcode at every signature: there a passcode key is windowed, and
-says so to your backend. iOS makes per-use keys only. Removing the screen lock, or enrolling another
-biometric for a biometric key, makes the key unusable; the person then re-enrols a new one with their
-own re-authentication — `stepUpReenrolProof` builds the proof the new key signs, as the guide's step-up
-section describes. An app whose backend sets the policy assigns `trust.stepUp` before `start()`.
+says so to your backend. iOS makes per-use keys only. An app whose backend sets the policy assigns
+`trust.stepUp` before `start()`.
+
+Removing the screen lock, or enrolling another biometric for a biometric key, makes the key unusable:
+an approval then fails with `NativeKeyException` `STEPUP_KEY_INVALIDATED`. The person re-enrols a new
+key with their own re-authentication:
+
+```dart
+await trust.reenrolStepUp(
+  session: accountSession,
+  reauthentication: {'password': password}, // as your backend requires
+);
+```
+
+A new key is made, the person unlocks it to sign its proof, and your backend takes it for that account
+alone; approvals use it from then on. The call goes to `/v1/installations/stepup-key`, or to your API's
+own path: `StepUpOptions(reenrolPath: ...)`.
 
 ## The app PIN: the person's PIN for one request
 

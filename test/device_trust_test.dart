@@ -54,6 +54,9 @@ class _Backend implements DeviceTrustTransport {
         '/v1/account/app-pin/proof': <Object>[
           <String, dynamic>{'app_pin_proof': 'pin-proof'},
         ],
+        '/v1/installations/stepup-key': <Object>[
+          <String, dynamic>{'stepup_key_registered': true},
+        ],
         ...?answers,
       };
 
@@ -206,6 +209,26 @@ class _StepUpKey extends NativeStepUpKey {
     this.reason = reason;
     return 'approved';
   }
+}
+
+/// A key that died with the screen lock: its first signature fails, and a
+/// new one is made once it is deleted.
+class _DyingStepUpKey extends _StepUpKey {
+  int deleted = 0;
+
+  @override
+  Future<String> sign(String payloadBase64Url, {required String reason}) async {
+    if (deleted == 0) {
+      throw NativeKeyException(
+        'STEPUP_KEY_INVALIDATED',
+        'the lock was removed',
+      );
+    }
+    return super.sign(payloadBase64Url, reason: reason);
+  }
+
+  @override
+  Future<void> deleteKey() async => deleted += 1;
 }
 
 /// Refuses the first key it is asked for, then makes one.
@@ -380,6 +403,64 @@ void main() {
       ),
       hasLength(3),
     );
+  });
+
+  test('re-enrolment: a dead step-up key replaced, its proof bound to the '
+      "request proof's nonce, and approvals from then on", () async {
+    final _Backend backend = _Backend();
+    final _DyingStepUpKey key = _DyingStepUpKey();
+    final DeviceTrust trust = _trust(
+      backend,
+      stepUpKey: key,
+      stepUp: const StepUpOptions(),
+    );
+    await trust.start();
+    expect(
+      await trust.reenrolStepUp(
+        session: 'account-session',
+        reauthentication: <String, dynamic>{'password': 'pw'},
+      ),
+      containsPair('stepup_key_registered', true),
+    );
+    expect(key.deleted, 1);
+    final _Call call = backend.calls.last;
+    expect(call.path, '/v1/installations/stepup-key');
+    expect(call.bearer, 'account-session');
+    expect(call.body['password'], 'pw');
+    expect(call.body['stepup_public_key'], containsPair('x', 'sx'));
+    expect(call.body['stepup_key_auth'], containsPair('factor', 'passcode'));
+    expect(call.body['stepup_key_signature'], 'approved');
+    final Map<String, dynamic> proof = _decoded(
+      call.body['stepup_key_proof'] as String,
+    );
+    expect(proof['version'], 1);
+    expect(proof['purpose'], 'stepup_reenrol');
+    expect(proof['installation_id'], 'proposed-id');
+    expect(proof['nonce'], _decoded(call.headers['X-Access-Proof']!)['nonce']);
+    final RequestProof approval = await trust.signRequest(
+      method: 'POST',
+      path: '/v1/pay',
+      bearer: 'account-session',
+      stepUp: true,
+    );
+    expect(approval.headers.keys, contains('X-Step-Up-Proof'));
+  });
+
+  test('re-enrolment with step-up off refuses before sending', () async {
+    final _Backend backend = _Backend();
+    final DeviceTrust trust = _trust(backend);
+    await trust.start();
+    await expectLater(
+      trust.reenrolStepUp(session: 'account-session'),
+      throwsA(
+        isA<NativeKeyException>().having(
+          (NativeKeyException e) => e.code,
+          'code',
+          'STEPUP_OFF',
+        ),
+      ),
+    );
+    expect(backend.paths, isNot(contains('/v1/installations/stepup-key')));
   });
 
   test('a scan for one operation is asked under the account session', () async {

@@ -26,7 +26,7 @@ Each section opens and closes; each result says whether the backend did what it 
 | Installation | **Start**: the key is made in the phone's keystore, registered and proved. **Prove again**. **New installation** deletes the key, as a reinstall would | the installation, its key, and the step-up key the phone made |
 | Measurements | turn each personal measurement on or off, and see the code for your choice; ask for the location permission; **Scan** | every measurement the signed report carried, each opening to its fields, grouped by what it catches: the hooks, gadgets and changes in memory first. One the backend did not ask for shows as not asked |
 | Account | **Sign in** (the sample makes the account at its first sign-in) | an account session for this installation |
-| Requests | **Protected request**; **Sensitive, without approval**; **Sensitive, with step-up**; set the app PIN, then **Sensitive, with the app PIN** | accepted; refused, `403 needs_approval`; accepted once the person unlocks the screen lock; accepted |
+| Requests | **Protected request**; **Sensitive, without approval**; **Sensitive, with step-up**; **Re-enrol the step-up key**; set the app PIN, then **Sensitive, with the app PIN** | accepted; refused, `403 needs_approval`; accepted once the person unlocks the screen lock; a new key taken with the account password; accepted |
 | Requests a backend must refuse | one request sent twice; its body changed after signing; sent to another path; a proof ten minutes old; a session copied from another phone | each refused |
 
 A request that a backend must refuse but that is accepted shows as a failure, so the app doubles as a check
@@ -54,6 +54,10 @@ carries a ✓ when the backend did what it should, a red ✗ when it did not.
 9. **Sensitive, with the app PIN.** Expect: ✓ `{"done":"/v1/demo/sensitive"}`.
 10. **Requests a backend must refuse:** tap each of the four. Expect a ✓ on each: `Refused, as it should
     be: 401 proof_reused` for the request sent twice, `401 proof_not_accepted` for the other three.
+
+If the phone's screen lock is removed and set again, the step-up key dies: step 7 then shows `The phone
+said STEPUP_KEY_INVALIDATED`. Tap **Re-enrol the step-up key** and unlock with the passcode — expect ✓
+`{"stepup_key_registered":true}` — and step 7 passes again. The new key is that account's alone.
 
 The app PIN belongs to the account, not to the phone. Phones signed in with the same handle share it: a
 PIN set on one unlocks requests on the other, and before any is set, step 9 answers `app_pin_not_set`.

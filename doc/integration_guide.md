@@ -324,8 +324,8 @@ proof, so one PIN entry unlocks one request, once.
 ## 4. The API — the plugin's default
 
 Unless your app carries the messages itself, the plugin makes these five calls under the HTTPS base URL
-your app sets — and, with the app PIN on, two more, at paths your app can change. Your backend
-implements them by sections 1 to 3.
+your app sets — and, with the app PIN on, two more, and with step-up on, one for re-enrolment, at paths
+your app can change. Your backend implements them by sections 1 to 3.
 
 | Call | Method and path | Authorization |
 |---|---|---|
@@ -336,6 +336,7 @@ implements them by sections 1 to 3.
 | Send the report | `POST /v1/integrity/report` | the session that asked for the scan, with a request proof |
 | Set the app PIN | `POST /v1/account/app-pin` | your account session, with a request proof |
 | Prove the app PIN for one request | `POST /v1/account/app-pin/proof` | your account session, with a request proof |
+| Re-enrol the step-up key | `POST /v1/installations/stepup-key` | your account session, with a request proof |
 
 Requests and answers, in JSON. An answer may carry more fields; the plugin passes them to your app.
 
@@ -380,6 +381,13 @@ POST /v1/account/app-pin/proof
                                 "body_sha256": "98ab…", "nonce": "yMnK…"}}
 → {"app_pin_proof": "eyJ…", "expires_at": "2026-10-20T12:02:00Z"}   sent with that request as
                                                                    X-App-PIN-Proof
+
+POST /v1/installations/stepup-key                    with step-up on: a new key (section 3)
+  {"password": "…", "stepup_public_key": {"kty": "EC", "crv": "P-256", …},
+   "stepup_key_auth": {"factor": "passcode", "mode": "per_use", "window_seconds": 0},
+   "stepup_key_proof": "eyJ…", "stepup_key_signature": "MEUCIQ…"}
+→ {"stepup_key_registered": true, …}                the new key's proof is signed over the
+                                                    request proof's nonce
 ```
 
 - `security_level` is `strongbox`, `trusted_execution_environment`, `secure_hardware`, `software` or

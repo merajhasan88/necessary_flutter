@@ -73,6 +73,14 @@ class SampleApi {
     ),
   );
 
+  /// A new step-up key, with the person's password: after the screen lock
+  /// was removed, say, when approvals fail with STEPUP_KEY_INVALIDATED.
+  Future<Map<String, dynamic>> reenrolStepUp(String password) =>
+      trust.reenrolStepUp(
+        session: _session,
+        reauthentication: <String, dynamic>{'password': password},
+      );
+
   /// Sets the account's app PIN, with the person's password.
   Future<Map<String, dynamic>> setAppPin(String pin, String password) =>
       trust.setAppPin(

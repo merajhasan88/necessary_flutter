@@ -77,7 +77,8 @@ public static class Wire
         node is JsonValue v && v.GetValueKind() == JsonValueKind.Number && v.TryGetValue(out long n) ? n : null;
 }
 
-public sealed record StepUpKey(JsonObject Jwk, string Factor, string Mode, long WindowSeconds);
+/// <summary>A step-up key; a re-enrolled one carries the account that re-enrolled it.</summary>
+public sealed record StepUpKey(JsonObject Jwk, string Factor, string Mode, long WindowSeconds, string? Account = null);
 
 public sealed record Installation(string Thumbprint, JsonObject Jwk, string Platform, string? Hint,
     JsonNode? KeySecurity, StepUpKey? StepUp);
@@ -707,6 +708,12 @@ public sealed class Backend(JsonSchema schema, string? testToken)
         {
             throw new Refusal(403, "needs_step_up", "This request needs the person's approval.");
         }
+        // A re-enrolled key approves for the account that re-enrolled it alone.
+        if (stepUp.Account is not null && stepUp.Account != session.Account)
+        {
+            throw new Refusal(403, "step_up_not_accepted", "The step-up key is another account's.",
+                new JsonObject { ["check"] = "account" });
+        }
         byte[] raw = [];
         JsonObject proof = new();
         try
@@ -755,6 +762,59 @@ public sealed class Backend(JsonSchema schema, string? testToken)
         {
             return _accounts[session.Account!];
         }
+    }
+
+    // --- Section 3: re-enrolment, a new step-up key for this account alone.
+
+    public async Task<JsonObject> ReenrolStepUp(Call call, JsonObject body)
+    {
+        var (session, installation, nonce) = Authenticate(call, "account");
+        var stepUp = StepUpKeyOf(body, installation.Thumbprint)
+            ?? throw new Refusal(400, "bad_request", "A new step-up key is required.",
+                new JsonObject { ["field"] = "stepup_public_key" });
+        byte[] raw = [];
+        JsonObject proof = new();
+        try
+        {
+            raw = Wire.Decode(Wire.Text(body["stepup_key_proof"]) ?? "");
+            proof = JsonNode.Parse(raw) as JsonObject ?? new JsonObject();
+        }
+        catch (Exception e) when (e is FormatException or JsonException)
+        {
+            // Fails the signature below.
+        }
+        // Every check of the new key before the password, so that this call cannot serve to guess it.
+        if (!Verifies(stepUp.Jwk, raw, Wire.Text(body["stepup_key_signature"])))
+        {
+            throw new Refusal(403, "step_up_not_accepted", "The new key's proof does not verify.",
+                new JsonObject { ["check"] = "signature" });
+        }
+        var expected = new (string Field, JsonNode Value)[]
+        {
+            ("version", 1), ("purpose", "stepup_reenrol"), ("installation_id", session.InstallationId),
+            ("stepup_key_thumbprint", Thumbprint(stepUp.Jwk)), ("nonce", nonce),
+        };
+        foreach (var (field, value) in expected)
+        {
+            if (!JsonNode.DeepEquals(proof[field], value))
+            {
+                throw new Refusal(403, "step_up_not_accepted", "The new key's proof is for another request.",
+                    new JsonObject { ["check"] = field });
+            }
+        }
+        var timestamp = Wire.Integer(proof["timestamp"]);
+        if (timestamp is null || Math.Abs(Wire.Now() - timestamp.Value) > ClockWindowSeconds)
+        {
+            throw new Refusal(403, "step_up_not_accepted", "The new key's proof is out of time.",
+                new JsonObject { ["check"] = "timestamp" });
+        }
+        await Reauthenticate(AccountOf(session), session.Account!, Wire.Text(body["password"]));
+        lock (_lock)
+        {
+            // Another account on the phone, which needs only the installation key, gains no step-up from it.
+            _installations[session.InstallationId] = installation with { StepUp = stepUp with { Account = session.Account } };
+        }
+        return new JsonObject { ["stepup_key_registered"] = true };
     }
 
     public async Task<JsonObject> SetAppPin(Call call, JsonObject body)
@@ -1072,6 +1132,7 @@ public static class Program
         ["/v1/installations/verify"] = (b, c, body) => Task.FromResult(b.Verify(body)),
         ["/v1/integrity/challenge"] = (b, c, body) => Task.FromResult(b.ScanChallengeFor(c, body)),
         ["/v1/integrity/report"] = (b, c, body) => Task.FromResult(b.Report(c, body)),
+        ["/v1/installations/stepup-key"] = (b, c, body) => b.ReenrolStepUp(c, body),
         ["/v1/account/app-pin"] = (b, c, body) => b.SetAppPin(c, body),
         ["/v1/account/app-pin/proof"] = (b, c, body) => b.ProveAppPin(c, body),
         ["/v1/demo/sign-in"] = (b, c, body) => b.SignIn(c, body),

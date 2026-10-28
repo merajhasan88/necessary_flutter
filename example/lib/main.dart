@@ -539,6 +539,12 @@ class _TrustPageState extends State<TrustPage> {
         () async => jsonEncode(await _api.sensitive(stepUp: true)),
         enabled: signedIn,
       ),
+      _button(
+        'Requests',
+        'Re-enrol the step-up key',
+        () async => jsonEncode(await _api.reenrolStepUp(_password.text)),
+        enabled: signedIn,
+      ),
     ]),
     TextField(
       controller: _pin,
