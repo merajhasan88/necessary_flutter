@@ -366,10 +366,26 @@ class ScanView extends StatelessWidget {
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: groups,
+      children: <Widget>[
+        Text(
+          'The phone reports what it measured; your backend decides what it '
+          'means.',
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(fontStyle: FontStyle.italic),
+        ),
+        ...groups,
+      ],
     );
   }
 }
+
+/// A measurement's status as the badge says it: whether the phone measured
+/// it, never whether what it found is good or bad.
+const Map<String, String> _statusLabels = <String, String>{
+  'ok': 'measured',
+  'error': 'failed',
+  'not_enabled': 'off',
+};
 
 class _Group extends StatelessWidget {
   const _Group({required this.title, required this.note, required this.tiles});
@@ -433,7 +449,7 @@ class MeasurementTile extends StatelessWidget {
           if (partly) const _Badge('unread', warning: true),
           if (value?['truncated'] == true) const _Badge('truncated'),
           _Badge(
-            status,
+            _statusLabels[status] ?? status,
             warning:
                 status == 'error' ||
                 status == 'missing' ||
@@ -576,7 +592,7 @@ class _Badge extends StatelessWidget {
     final ColorScheme colors = Theme.of(context).colorScheme;
     final Color color = warning
         ? colors.error
-        : label == 'ok'
+        : label == 'measured'
         ? colors.primary
         : colors.outline;
     return Container(
