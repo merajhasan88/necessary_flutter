@@ -44,17 +44,25 @@ MAX_REPORT_BYTES = 65536         # the contract's limit
 MIN_COLLECTOR = {"android": 8, "ios": 5}   # the contract this sample reads
 VERIFIER_ROUNDS = 600_000        # PBKDF2-HMAC-SHA256, a slow verifier
 
-# What this sample asks for in every scan, and the measurements it varies.
+# What this sample asks for in every scan: every measurement that would catch
+# tampering, the hooks, gadgets and changes to the app's code in memory among
+# them. One left to chance is one a tampered app waits out, scanning again
+# until it is not drawn. Only what weighs little varies.
 RELIED_ON = {
-    "android": ["app_identity", "debug_state", "root_files", "runtime_maps", "tracer"],
+    "android": ["app_identity", "debug_state", "tracer", "root_files", "root_shell",
+                "system_properties", "selinux", "mounts", "developer_settings",
+                # Hooks and gadgets by name, by port, by thread and by memory
+                # layout; and the code in memory compared with its file.
+                "runtime_maps", "frida_ports", "instrumentation_threads",
+                "exec_mappings", "code_integrity"],
     "ios": ["app_identity", "code_signing", "debugger", "jailbreak_files", "sandbox",
-            "dyld_images"],
+            # Injected libraries, and the app's code in memory compared with
+            # its file -- asked for, so that a report without it is refused.
+            "dyld_images", "environment", "code_integrity"],
 }
 VARIED = {
-    "android": ["system_properties", "root_shell", "selinux", "mounts", "frida_ports",
-                "emulator", "developer_settings", "instrumentation_threads",
-                "exec_mappings", "code_integrity"],
-    "ios": ["environment", "simulator"],
+    "android": ["emulator"],
+    "ios": ["simulator"],
 }
 # The personal measurements (the guide, section 8): this sample asks for every
 # one in every scan, so that the example app can show each one it enables. A
@@ -335,10 +343,9 @@ class Backend:
                               "An operation is named only under an account session, whole.")
             digest = sha256_hex(canonical(operation))
         platform = installation["platform"]
-        # Varied from scan to scan, unpredictably, so a tampered app cannot
-        # prepare its answers.
-        required = RELIED_ON[platform] + secrets.SystemRandom().sample(
-            VARIED[platform], min(3, len(VARIED[platform])))
+        # Each of the others on about half the scans, unpredictably.
+        required = RELIED_ON[platform] + [
+            name for name in VARIED[platform] if secrets.randbelow(2)]
         nonce = secrets.token_bytes(32)
         challenge_id = str(uuid.uuid4())
         expires = self.now() + SCAN_CHALLENGE_SECONDS

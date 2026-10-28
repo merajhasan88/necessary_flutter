@@ -152,18 +152,26 @@ public sealed class Backend(JsonSchema schema, string? testToken)
 
     private static readonly Dictionary<string, int> MinCollector = new() { ["android"] = 8, ["ios"] = 5 };
 
-    // What this sample asks for in every scan, and the measurements it varies.
+    // What this sample asks for in every scan: every measurement that would catch tampering, the
+    // hooks, gadgets and changes to the app's code in memory among them. One left to chance is one a
+    // tampered app waits out, scanning again until it is not drawn. Only what weighs little varies.
     private static readonly Dictionary<string, string[]> ReliedOn = new()
     {
-        ["android"] = ["app_identity", "debug_state", "root_files", "runtime_maps", "tracer"],
-        ["ios"] = ["app_identity", "code_signing", "debugger", "jailbreak_files", "sandbox", "dyld_images"],
+        ["android"] = ["app_identity", "debug_state", "tracer", "root_files", "root_shell", "system_properties",
+            "selinux", "mounts", "developer_settings",
+            // Hooks and gadgets by name, by port, by thread and by memory layout; and the code in
+            // memory compared with its file.
+            "runtime_maps", "frida_ports", "instrumentation_threads", "exec_mappings", "code_integrity"],
+        ["ios"] = ["app_identity", "code_signing", "debugger", "jailbreak_files", "sandbox",
+            // Injected libraries, and the app's code in memory compared with its file -- asked for,
+            // so that a report without it is refused.
+            "dyld_images", "environment", "code_integrity"],
     };
 
     private static readonly Dictionary<string, string[]> Varied = new()
     {
-        ["android"] = ["system_properties", "root_shell", "selinux", "mounts", "frida_ports", "emulator",
-            "developer_settings", "instrumentation_threads", "exec_mappings", "code_integrity"],
-        ["ios"] = ["environment", "simulator"],
+        ["android"] = ["emulator"],
+        ["ios"] = ["simulator"],
     };
 
     // The personal measurements (the guide, section 8): this sample asks for every one in every scan,
@@ -527,10 +535,9 @@ public sealed class Backend(JsonSchema schema, string? testToken)
             digest = Wire.Sha256Hex(Wire.Canonical(operation));
         }
         var platform = installation.Platform;
-        // Varied from scan to scan, unpredictably, so a tampered app cannot prepare its answers.
-        var varied = Varied[platform].ToArray();
-        RandomNumberGenerator.Shuffle<string>(varied);
-        var required = ReliedOn[platform].Concat(varied.Take(3)).ToArray();
+        // Each of the others on about half the scans, unpredictably.
+        var required = ReliedOn[platform]
+            .Concat(Varied[platform].Where(_ => RandomNumberGenerator.GetInt32(2) == 1)).ToArray();
         var nonce = RandomNumberGenerator.GetBytes(32);
         var challengeId = Guid.NewGuid().ToString();
         var expires = Wire.Now() + ScanChallengeSeconds;

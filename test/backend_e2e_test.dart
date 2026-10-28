@@ -278,6 +278,22 @@ void main() {
           (scan.answer['integrity'] as Map<String, dynamic>)['next'],
           'allow',
         );
+        // What catches hooks, gadgets and changes in memory is asked for on
+        // every scan, never left to chance.
+        for (int i = 0; i < 3; i++) {
+          expect(
+            (await trust.scan()).challenge.requiredProbes,
+            containsAll(<String>[
+              'runtime_maps',
+              'frida_ports',
+              'instrumentation_threads',
+              'exec_mappings',
+              'code_integrity',
+              'tracer',
+              'debug_state',
+            ]),
+          );
+        }
         // Every personal measurement is asked for, so that the example app
         // can show each one it enables.
         expect(scan.challenge.optionalProbes, <String>[

@@ -30,15 +30,23 @@ const MAX_REPORT_BYTES = 65536; // the contract's limit
 const MIN_COLLECTOR: Record<string, number> = { android: 8, ios: 5 };
 const VERIFIER_ROUNDS = 600_000; // PBKDF2-HMAC-SHA256, a slow verifier
 
-// What this sample asks for in every scan, and the measurements it varies.
+// What this sample asks for in every scan: every measurement that would catch tampering, the hooks,
+// gadgets and changes to the app's code in memory among them. One left to chance is one a tampered
+// app waits out, scanning again until it is not drawn. Only what weighs little varies.
 const RELIED_ON: Record<string, string[]> = {
-  android: ["app_identity", "debug_state", "root_files", "runtime_maps", "tracer"],
-  ios: ["app_identity", "code_signing", "debugger", "jailbreak_files", "sandbox", "dyld_images"],
+  android: ["app_identity", "debug_state", "tracer", "root_files", "root_shell", "system_properties",
+    "selinux", "mounts", "developer_settings",
+    // Hooks and gadgets by name, by port, by thread and by memory layout; and the code in memory
+    // compared with its file.
+    "runtime_maps", "frida_ports", "instrumentation_threads", "exec_mappings", "code_integrity"],
+  ios: ["app_identity", "code_signing", "debugger", "jailbreak_files", "sandbox",
+    // Injected libraries, and the app's code in memory compared with its file -- asked for, so
+    // that a report without it is refused.
+    "dyld_images", "environment", "code_integrity"],
 };
 const VARIED: Record<string, string[]> = {
-  android: ["system_properties", "root_shell", "selinux", "mounts", "frida_ports", "emulator",
-    "developer_settings", "instrumentation_threads", "exec_mappings", "code_integrity"],
-  ios: ["environment", "simulator"],
+  android: ["emulator"],
+  ios: ["simulator"],
 };
 // The personal measurements (the guide, section 8): this sample asks for every one in every scan, so
 // that the example app can show each one it enables. A production backend asks only for those it uses.
@@ -383,14 +391,8 @@ class Backend {
       digest = sha256Hex(canonical(operation));
     }
     const platform = installation.platform;
-    // Varied from scan to scan, unpredictably, so a tampered app cannot
-    // prepare its answers.
-    const varied = [...VARIED[platform]];
-    for (let i = varied.length - 1; i > 0; i--) {
-      const j = crypto.randomInt(i + 1);
-      [varied[i], varied[j]] = [varied[j], varied[i]];
-    }
-    const required = [...RELIED_ON[platform], ...varied.slice(0, 3)];
+    // Each of the others on about half the scans, unpredictably.
+    const required = [...RELIED_ON[platform], ...VARIED[platform].filter(() => crypto.randomInt(2) === 1)];
     const nonce = crypto.randomBytes(32);
     const challengeId = crypto.randomUUID();
     const expires = now() + SCAN_CHALLENGE_SECONDS;

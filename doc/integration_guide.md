@@ -117,8 +117,13 @@ so that you need not store it. The app answers with `installation_id`, `challeng
 | `expires_at` | 60 seconds ahead |
 
 Ask for every measurement you rely on every time, and vary the others from scan to scan, so that a
-tampered app cannot prepare its answers. Issue a challenge only to a session that has proved its key,
-and limit how often one installation may ask.
+tampered app cannot prepare its answers. **Rely on every measurement that would catch tampering** — the
+hooks, gadgets and changes to the app's code in memory among them: on Android `runtime_maps`,
+`frida_ports`, `instrumentation_threads`, `exec_mappings` and `code_integrity`; on iOS `dyld_images`,
+`environment` and `code_integrity`. One left to chance is one a tampered app waits out, scanning again
+until it is not asked for. Ask for iOS `code_integrity` too, although every report carries it: only a
+report that lacks a measurement you asked for is refused. Issue a challenge only to a session that has
+proved its key, and limit how often one installation may ask.
 
 ### The report (the app to your backend)
 

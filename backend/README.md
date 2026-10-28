@@ -12,9 +12,11 @@ the section numbers in the code:
 - **Proof of possession** (section 1): a key challenge that stores nothing — its payload carries an HMAC
   under a key of the backend's — answered once, consumed only after the signature verifies, for an
   installation session of ten minutes.
-- **The scan** (section 2): a challenge asking for the measurements it relies on every time and varying
-  the others, and for every personal measurement (section 8), so that the example app can show each one
-  it enables — a production backend asks only for those it uses; the report's ten checks in order; then
+- **The scan** (section 2): a challenge asking on every scan for every measurement that would catch
+  tampering — the hooks, gadgets and changes to the app's code in memory among them — varying only the
+  emulator's (or simulator's) build values; and for every personal measurement (section 8), so that the
+  example app can show each one it enables — a production backend asks only for those it uses; the
+  report's ten checks in order; then
   the report against the contract's schema; the answer `{"integrity": {"report_id": …, "next":
   "allow"}}` — what to do next, never a score.
 - **A scan for one action** (section 2): named only under an account session; its report approves that

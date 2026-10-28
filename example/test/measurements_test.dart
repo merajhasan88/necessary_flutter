@@ -1,6 +1,6 @@
 // The measurements view against the published contract's samples: every
-// measurement each sample report carries is listed with its status, and each
-// opens to its fields.
+// measurement each sample report carries is listed with its status, the
+// hooks, gadgets and memory changes first, and each opens to its fields.
 import 'dart:convert';
 import 'dart:io';
 
@@ -63,7 +63,20 @@ void main() {
       for (final String name in results.keys) {
         expect(find.text(name), findsOneWidget, reason: name);
       }
-      expect(find.byType(MeasurementTile), findsNWidgets(results.length));
+      // The hooks, gadgets and memory changes come first, and every one of
+      // them is shown, asked for or not.
+      expect(
+        tester.getTopLeft(find.text(MeasurementGroup.hooks.title)).dy,
+        lessThan(tester.getTopLeft(find.text(MeasurementGroup.app.title)).dy),
+      );
+      for (final MeasurementInfo info
+          in (report['platform'] == 'ios'
+              ? iosMeasurements
+              : androidMeasurements)) {
+        if (info.group == MeasurementGroup.hooks) {
+          expect(find.text(info.name), findsOneWidget, reason: info.name);
+        }
+      }
       // Each opens, by its name, to its fields.
       for (final String name in results.keys) {
         final Finder label = find.text(name);
