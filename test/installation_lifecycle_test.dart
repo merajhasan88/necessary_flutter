@@ -1,6 +1,9 @@
 // The installation across a phone's life: the first start, a restart, a key
 // the platform lost (an Android reinstall), and an iOS reinstall that kept the
-// key but not the app's other data -- and two of the plugin's calls at once.
+// key but not the app's other data -- two of the plugin's calls at once, and
+// a reset or a close while calls still run.
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -108,6 +111,101 @@ class _NoHint extends ReinstallHintReader {
   @override
   Future<ReinstallHint?> read() async => null;
 }
+
+/// Answers as [_Backend] does, but with a new installation ID and a new
+/// session each time, in the order answered; and holds the answer to a path
+/// while a test says so.
+class _HeldBackend extends _Backend {
+  final Map<String, Completer<void>> _held = <String, Completer<void>>{};
+  final Map<String, Completer<void>> _asked = <String, Completer<void>>{};
+  int _registered = 0;
+  int _proved = 0;
+
+  /// The next request to [path] waits for the completer's completion.
+  Completer<void> hold(String path) => _held[path] = Completer<void>();
+
+  /// Completes once [path] has been asked.
+  Future<void> asked(String path) =>
+      (_asked[path] ??= Completer<void>()).future;
+
+  @override
+  Future<Map<String, dynamic>> send(
+    String method,
+    String path, {
+    String? encodedBody,
+    String? bearerToken,
+    Map<String, String> headers = const <String, String>{},
+  }) async {
+    final Completer<void> asked = _asked[path] ??= Completer<void>();
+    if (!asked.isCompleted) {
+      asked.complete();
+    }
+    final Completer<void>? held = _held.remove(path);
+    if (held != null) {
+      await held.future;
+    }
+    final Map<String, dynamic> answer = await super.send(
+      method,
+      path,
+      encodedBody: encodedBody,
+      bearerToken: bearerToken,
+      headers: headers,
+    );
+    return switch (path) {
+      '/v1/installations/register' => <String, dynamic>{
+        'installation_id': 'held-${++_registered}',
+      },
+      '/v1/installations/verify' => <String, dynamic>{
+        'device_token': 'session-${++_proved}',
+      },
+      _ => answer,
+    };
+  }
+}
+
+/// A collector that waits, at its first collection, until the test lets it
+/// go on; and notes what each collection was allowed to measure.
+class _HeldCollector extends _Collector {
+  final Completer<void> reached = Completer<void>();
+  final Completer<void> goOn = Completer<void>();
+  final List<List<String>> enabled = <List<String>>[];
+
+  @override
+  Future<Map<String, dynamic>> collect({
+    required List<String> requiredProbes,
+    required String challengeNonce,
+    required List<String> enabledMeasurements,
+    List<String> optionalProbes = const <String>[],
+  }) async {
+    enabled.add(enabledMeasurements);
+    if (!reached.isCompleted) {
+      reached.complete();
+    }
+    await goOn.future;
+    return super.collect(
+      requiredProbes: requiredProbes,
+      challengeNonce: challengeNonce,
+      enabledMeasurements: enabledMeasurements,
+      optionalProbes: optionalProbes,
+    );
+  }
+}
+
+/// A store that counts its loads, each taking a moment.
+class _CountingStore extends InstallationStore {
+  _CountingStore() : super(key: _Keystore(holds: false));
+
+  int loads = 0;
+
+  @override
+  Future<InstallationIdentity> loadOrCreate() async {
+    loads++;
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    return super.loadOrCreate();
+  }
+}
+
+final Matcher _interrupted = throwsA(isA<InterruptedCallException>());
 
 void main() {
   setUp(() {
@@ -237,4 +335,139 @@ void main() {
       );
     },
   );
+
+  test(
+    'a reset while start() waits for its key challenge\'s answer: the old '
+    'answer is kept nowhere, and a new start() never joins the old one',
+    () async {
+      final _HeldBackend backend = _HeldBackend();
+      final DeviceTrust trust = DeviceTrust.over(
+        backend,
+        store: InstallationStore(key: _Keystore(holds: false)),
+        collector: _Collector(),
+        hintReader: _NoHint(),
+      );
+      final Completer<void> verify = backend.hold('/v1/installations/verify');
+      final Future<void> old = expectLater(trust.start(), _interrupted);
+      await backend.asked('/v1/installations/verify');
+      await trust.reset();
+      final InstallationIdentity fresh = await trust.start();
+      expect(trust.installationSession, 'session-1');
+      verify.complete();
+      await old;
+      expect(trust.installationSession, 'session-1');
+      expect(trust.identity!.installationId, fresh.installationId);
+      expect(await _storedId(), fresh.installationId);
+    },
+  );
+
+  test('a reset while start() waits for its registration: the ID the old '
+      'answer names is never kept', () async {
+    final _HeldBackend backend = _HeldBackend();
+    final DeviceTrust trust = DeviceTrust.over(
+      backend,
+      store: InstallationStore(key: _Keystore(holds: false)),
+      collector: _Collector(),
+      hintReader: _NoHint(),
+    );
+    final Completer<void> register = backend.hold('/v1/installations/register');
+    final Future<void> old = expectLater(trust.start(), _interrupted);
+    await backend.asked('/v1/installations/register');
+    await trust.reset();
+    final InstallationIdentity fresh = await trust.start();
+    expect(fresh.installationId, 'held-1');
+    register.complete();
+    await old;
+    expect(trust.identity!.installationId, 'held-1');
+    expect(await _storedId(), 'held-1');
+  });
+
+  test('a reset while a scan collects: its report is never sent', () async {
+    final _Backend backend = _Backend();
+    final _HeldCollector collector = _HeldCollector();
+    final DeviceTrust trust = DeviceTrust.over(
+      backend,
+      store: InstallationStore(key: _Keystore(holds: false)),
+      collector: collector,
+      hintReader: _NoHint(),
+    );
+    await trust.start();
+    final Future<void> scan = expectLater(trust.scan(), _interrupted);
+    await collector.reached.future;
+    await trust.reset();
+    collector.goOn.complete();
+    await scan;
+    expect(backend.paths, isNot(contains('/v1/integrity/report')));
+  });
+
+  test('close() while start() runs: the call keeps nothing', () async {
+    final _HeldBackend backend = _HeldBackend();
+    final DeviceTrust trust = DeviceTrust.over(
+      backend,
+      store: InstallationStore(key: _Keystore(holds: false)),
+      collector: _Collector(),
+      hintReader: _NoHint(),
+    );
+    final Completer<void> verify = backend.hold('/v1/installations/verify');
+    final Future<void> started = expectLater(trust.start(), _interrupted);
+    await backend.asked('/v1/installations/verify');
+    trust.close();
+    verify.complete();
+    await started;
+    expect(trust.installationSession, isNull);
+  });
+
+  test(
+    'two first loads at once load once: one key, one installation ID',
+    () async {
+      final _CountingStore store = _CountingStore();
+      final DeviceTrust trust = DeviceTrust.over(
+        _Backend(),
+        store: store,
+        collector: _Collector(),
+        hintReader: _NoHint(),
+      );
+      final List<InstallationIdentity> loaded = await Future.wait(
+        <Future<InstallationIdentity>>[
+          trust.loadIdentity(),
+          trust.loadIdentity(),
+        ],
+      );
+      expect(identical(loaded[0], loaded[1]), isTrue);
+      expect(store.loads, 1);
+      expect(await _storedId(), loaded[0].installationId);
+    },
+  );
+
+  test('a scan asked after the personal measurements changed never joins one '
+      'asked before', () async {
+    final _Backend backend = _Backend();
+    final _HeldCollector collector = _HeldCollector();
+    final DeviceTrust trust = DeviceTrust.over(
+      backend,
+      store: InstallationStore(key: _Keystore(holds: false)),
+      collector: collector,
+      hintReader: _NoHint(),
+    );
+    await trust.start();
+    final Future<ScanResult> before = trust.scan();
+    await collector.reached.future;
+    trust.personalMeasurements = <PersonalMeasurement>{
+      PersonalMeasurement.location,
+    };
+    final Future<ScanResult> after = trust.scan();
+    expect(identical(before, after), isFalse);
+    collector.goOn.complete();
+    final List<ScanResult> scans = await Future.wait(<Future<ScanResult>>[
+      before,
+      after,
+    ]);
+    expect(collector.enabled, <List<String>>[
+      <String>[],
+      <String>['location'],
+    ]);
+    expect(scans[1].report.report['enabled_measurements'], <String>[
+      'location',
+    ]);
+  });
 }

@@ -5,10 +5,11 @@
 Pod::Spec.new do |s|
   s.name             = 'necessary'
   s.version          = '0.1.0'
-  s.summary          = 'Device trust for Flutter apps: a key that never leaves the phone, signed measurements, request proofs.'
+  s.summary          = 'Device trust for Flutter apps: a device-bound key the plugin never exports, signed measurements, request proofs.'
   s.description      = <<-DESC
 The iOS half of the necessary plugin: the installation and step-up keys in the Secure
-Enclave, the integrity collector, and screen protection. The app's backend decides.
+Enclave (a Keychain software key where it declines), the integrity collector, and screen
+protection. The app's backend decides.
                        DESC
   s.homepage         = 'https://github.com/merajhasan88/necessary_flutter'
   s.license          = { :type => 'Apache-2.0', :file => '../LICENSE' }

@@ -22,3 +22,15 @@ class ApiException implements Exception {
   @override
   String toString() => message;
 }
+
+/// A call that DeviceTrust.reset or DeviceTrust.close ended while it ran:
+/// what it found belongs to an installation that is gone, or to a client that
+/// is closed, so nothing of it was kept. After a reset, call again.
+class InterruptedCallException implements Exception {
+  InterruptedCallException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}

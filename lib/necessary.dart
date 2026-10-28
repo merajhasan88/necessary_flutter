@@ -1,6 +1,7 @@
 /// Device trust for Flutter apps: the client half of the public integration
-/// guide. A key that never leaves the phone, signed measurements of the phone
-/// and the app, and request proofs; the app's backend decides what they mean.
+/// guide. A device-bound key the plugin never exports, signed measurements of
+/// the phone and the app, and request proofs; the app's backend decides what
+/// they mean.
 library;
 
 export 'src/client.dart';

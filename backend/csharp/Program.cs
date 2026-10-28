@@ -77,6 +77,225 @@ public static class Wire
         node is JsonValue v && v.GetValueKind() == JsonValueKind.Number && v.TryGetValue(out long n) ? n : null;
 }
 
+// --- The contract's rules (RULES.md): what a report's measurements are worth before any business
+// logic weighs them -- never a score. A report is judged over the measurements its challenge required:
+// complete, partial (part of the app's code compared), incomplete (something not measured) or invalid
+// (figures that cannot all be true).
+public static class Contract
+{
+    public static readonly string[] Qualities = ["complete", "partial", "incomplete", "invalid"];   // best to worst
+
+    // Where code is always mapped, so that a comparison there finds some (RULES.md 4): on an iPhone only
+    // the app's own, the rest being unreadable.
+    private static readonly Dictionary<string, string[]> Regions = new()
+    {
+        ["android"] = ["core", "ext", "app"],
+        ["ios"] = ["app"],
+    };
+
+    private static readonly string[] IosCoverage =
+        ["app_images_expected", "app_images_compared", "app_images_unreadable", "app_images_skipped",
+            "app_expected_bytes", "app_compared_bytes", "app_unreadable_bytes", "app_skipped_bytes",
+            "app_complete", "main_executable_compared"];
+
+    private static bool Absent(JsonNode? node) => node is null || node.GetValueKind() == JsonValueKind.Null;
+
+    private static bool? Flag(JsonNode? node) =>
+        node is JsonValue v && v.GetValueKind() is JsonValueKind.True or JsonValueKind.False ? v.GetValue<bool>() : null;
+
+    private static IEnumerable<string> Listed(JsonObject definition, string key) =>
+        definition[key] is JsonArray fields ? fields.Select(f => Wire.Text(f) ?? "") : [];
+
+    /// <summary>The contract's judgment of a report whose shape the schema accepted. Split APKs out of
+    /// order (RULES.md 6, the one rule a schema cannot state) are refused rather than read.</summary>
+    public static string Judge(JsonObject report, IEnumerable<string> required, JsonObject definitions)
+    {
+        var platform = Wire.Text(report["platform"]) ?? "";
+        var results = report["probe_results"] as JsonObject ?? new JsonObject();
+        if ((results["app_identity"] as JsonObject)?["split_apks"] is JsonArray splits)
+        {
+            var names = splits.Select(entry => Wire.Text(entry?["name"]) ?? "").ToArray();
+            // Sorted by name, ordinally, none twice.
+            if (names.Where((name, at) => at > 0 && string.CompareOrdinal(names[at - 1], name) >= 0).Any())
+            {
+                throw new Refusal(400, "report_not_accepted", "The report is not the contract's.",
+                    new JsonObject { ["check"] = "split_apks" });
+            }
+        }
+        var found = new List<string> { "complete" };
+        foreach (var name in required)
+        {
+            var definition = definitions[$"{platform}.{name}"] as JsonObject ?? new JsonObject();
+            if (results[name] is not JsonObject value || Wire.Text(value["status"]) != "ok")
+            {
+                found.Add("incomplete");   // failed or unsupported: not measured (2)
+                continue;
+            }
+            // ok is a claim: a measurement is complete with every field it lists, and with nothing in
+            // unread (2).
+            if (Listed(definition, "x-complete-when-ok").Any(field => Absent(value[field]))
+                || (value["unread"] is JsonObject unread && unread.Count > 0))
+            {
+                found.Add("incomplete");
+            }
+            // Failed reads, not clean values (7).
+            if ((name is "runtime_maps" or "exec_mappings" && Wire.Integer(value["maps_lines"]) == 0)
+                || (name == "instrumentation_threads" && Wire.Integer(value["thread_count"]) == 0))
+            {
+                found.Add("incomplete");
+            }
+            if (name == "exec_mappings" && WxSizesWithoutMappings(value))
+            {
+                found.Add("invalid");
+            }
+            if (name == "code_integrity")
+            {
+                found.Add(CodeComparison(platform, value, definition));
+            }
+        }
+        // Contradictions across measurements (7).
+        if (results["screen_capture"] is JsonObject capture && Wire.Text(capture["status"]) == "ok"
+            && Wire.Text(capture["recording_status"]) == "unsupported"
+            && (platform == "ios" || (results["device"] is JsonObject device && Wire.Integer(device["sdk_int"]) >= 35)))
+        {
+            found.Add("invalid");   // recording unsupported where it is measured
+        }
+        if (results["location"] is JsonObject location && results["mock_location"] is JsonObject mock
+            && Wire.Text(location["status"]) == "ok" && Wire.Text(mock["status"]) == "ok"
+            && Wire.Integer(location["fix_time"]) is { } locationTime && Wire.Integer(mock["fix_time"]) is { } mockTime
+            && locationTime != mockTime)
+        {
+            found.Add("invalid");   // two fixes presented as one (5)
+        }
+        return found.MaxBy(quality => Array.IndexOf(Qualities, quality))!;
+    }
+
+    /// <summary>No writable-and-executable mapping, with the sizes of such mappings listed (RULES.md 7).</summary>
+    private static bool WxSizesWithoutMappings(JsonObject maps)
+    {
+        var classes = 0;
+        foreach (var part in (Wire.Text(maps["wx_size_classes"]) ?? "").Split(','))
+        {
+            if (string.IsNullOrWhiteSpace(part))
+            {
+                continue;
+            }
+            var at = part.IndexOf(':');
+            var size = (at < 0 ? part : part[..at]).Trim();
+            var count = (at < 0 ? "" : part[(at + 1)..]).Trim();
+            if (size.Length == 0 || count.Length == 0 || !size.All(char.IsAsciiDigit) || !count.All(char.IsAsciiDigit))
+            {
+                classes = 0;   // not a list of sizes
+                break;
+            }
+            classes += 1;
+        }
+        var extremes = (Wire.Integer(maps["wx_smallest_bytes"]) ?? 0) != 0 || (Wire.Integer(maps["wx_largest_bytes"]) ?? 0) != 0;
+        return Wire.Integer(maps["wx_mappings"]) == 0 && (Wire.Integer(maps["wx_bytes"]) ?? 0) == 0
+            && (classes > 0 || extremes);
+    }
+
+    /// <summary>The comparison of code in memory with its files (RULES.md 4): invalid when its figures
+    /// do not add up; incomplete when it did not run, lacks a figure, or compared nothing where code
+    /// always is; partial when it compared part of the code.</summary>
+    private static string CodeComparison(string platform, JsonObject code, JsonObject definition)
+    {
+        if (!(platform == "android" ? AndroidCoverageAddsUp(code) : IosCoverageAddsUp(code)))
+        {
+            return "invalid";
+        }
+        if (Flag(code["checked"]) != true || Listed(definition, "x-complete-when-checked").Any(field => Absent(code[field])))
+        {
+            return "incomplete";
+        }
+        if (Regions[platform].Any(region => Wire.Integer(code[$"{region}_compared_bytes"]) == 0))
+        {
+            return "incomplete";
+        }
+        if (platform == "ios")
+        {
+            return Flag(code["app_complete"]) == true ? "complete" : "partial";
+        }
+        var shortOf = Regions["android"].Any(region =>
+            Wire.Integer(code[$"{region}_compared_bytes"]) < Wire.Integer(code[$"{region}_expected_bytes"]));
+        return shortOf || (Wire.Integer(code["protect_restore_failures"]) ?? 0) > 0 ? "partial" : "complete";
+    }
+
+    /// <summary>In each region the expected bytes are the compared, skipped and unreadable ones together,
+    /// and &lt;region&gt;_complete is true exactly when some code was expected and all of it was
+    /// compared.</summary>
+    private static bool AndroidCoverageAddsUp(JsonObject code)
+    {
+        foreach (var region in Regions["android"])
+        {
+            if (Absent(code[$"{region}_expected_bytes"]))
+            {
+                continue;
+            }
+            var expected = Wire.Integer(code[$"{region}_expected_bytes"]);
+            var parts = new[] { "compared", "skipped", "unreadable" }.Select(kind => Wire.Integer(code[$"{region}_{kind}_bytes"])).ToArray();
+            if (expected is null || parts.Any(part => part is null) || parts.Sum() != expected)
+            {
+                return false;
+            }
+            if (Flag(code[$"{region}_complete"]) is { } complete && complete != (expected > 0 && parts[0] == expected))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>Images and bytes both add up -- expected = compared + unreadable + skipped -- and
+    /// app_complete is true exactly when every image was compared, the main executable among them; bytes
+    /// are compared exactly when images are, and each image not compared is named. A collector that
+    /// reports only part of it is judged by its fields instead.</summary>
+    private static bool IosCoverageAddsUp(JsonObject code)
+    {
+        if (IosCoverage.Any(field => Absent(code[field])))
+        {
+            return true;
+        }
+        var figures = IosCoverage.Take(8).Select(field => Wire.Integer(code[field])).ToArray();
+        if (figures.Any(figure => figure is null))
+        {
+            return false;
+        }
+        long expected = figures[0]!.Value, compared = figures[1]!.Value, unreadable = figures[2]!.Value, skipped = figures[3]!.Value;
+        long expectedBytes = figures[4]!.Value, comparedBytes = figures[5]!.Value, unreadableBytes = figures[6]!.Value,
+            skippedBytes = figures[7]!.Value;
+        var complete = expected > 0 && compared == expected;
+        var main = Flag(code["main_executable_compared"]);
+        var named = code["app_images_not_compared"];
+        var namedCount = named is JsonObject list ? list.Count : 0;
+        var checkedFlag = Flag(code["checked"]);
+        return !(
+            expected != compared + unreadable + skipped
+            || expectedBytes != comparedBytes + unreadableBytes + skippedBytes
+            || Flag(code["app_complete"]) != complete
+            || (complete && (unreadableBytes > 0 || skippedBytes > 0))
+            || (unreadableBytes > 0 && unreadable == 0) || (skippedBytes > 0 && skipped == 0)
+            || (comparedBytes > 0) != (compared > 0)
+            || (!Absent(code["checked"]) && checkedFlag != (compared > 0))
+            || (main == true && compared == 0) || (complete && main != true)
+            || (!Absent(named) && (namedCount > unreadable + skipped || (unreadable + skipped > 0 && namedCount == 0))));
+    }
+
+    // Your business logic decides (the guide, section 7), and this is where it goes. This sample decides
+    // on the contract's judgment alone and scores nothing: a complete report lets the action go on, and
+    // so -- by this sample's choice -- does a partial one, whose comparison found nothing in the code it
+    // could read; an incomplete one asks for a scan again, since a failed read is no proof of an attack;
+    // and a report whose figures contradict each other is held for review. Only a report allowed here
+    // approves a scan made for one action.
+    private static readonly Dictionary<string, string> Next = new()
+    {
+        ["complete"] = "allow", ["partial"] = "allow", ["incomplete"] = "scan_again", ["invalid"] = "review",
+    };
+
+    /// <summary>What to do next, for this report: allow, scan_again or review.</summary>
+    public static string Decide(string judgment, JsonObject report) => Next[judgment];
+}
+
 /// <summary>A step-up key; a re-enrolled one carries the account that re-enrolled it.</summary>
 public sealed record StepUpKey(JsonObject Jwk, string Factor, string Mode, long WindowSeconds, string? Account = null);
 
@@ -100,6 +319,8 @@ public sealed class Account
     public int PinFailures { get; set; }
     public bool PinLocked { get; set; }
     public int PinChecking { get; set; }
+    // Each PIN set is a new generation; a check settles against the one it compared.
+    public int PinGeneration { get; set; }
 }
 
 public sealed class ScanChallenge
@@ -120,6 +341,8 @@ public sealed class StoredReport
     public required long At { get; init; }
     public string? OperationSha256 { get; init; }
     public string? Session { get; init; }
+    public required string Judgment { get; init; }
+    public required string Next { get; init; }
     public bool Used { get; set; }
 }
 
@@ -136,7 +359,7 @@ public sealed class Call(string method, string path, string query, IHeaderDictio
     public string? Header(string name) => headers.TryGetValue(name, out var value) ? value.ToString() : null;
 }
 
-public sealed class Backend(JsonSchema schema, string? testToken)
+public sealed class Backend(JsonSchema schema, JsonObject definitions, string? testToken)
 {
     private const long SessionSeconds = 600;        // sessions: ten minutes (section 1)
     private const long KeyChallengeSeconds = 120;   // key challenges: two minutes (section 1)
@@ -203,6 +426,9 @@ public sealed class Backend(JsonSchema schema, string? testToken)
     private readonly Dictionary<string, StoredReport> _reports = new();
     private readonly Dictionary<string, Account> _accounts = new();
     private readonly Dictionary<string, JsonObject> _pending = new();   // test control
+    // Test control: while set, PIN checks wait on it; released with fail, their verifier fails.
+    private TaskCompletionSource<bool>? _pinGate;
+    private int _pinWaiting;   // test control: the PIN checks waiting now
 
     /// <summary>Test controls answer only requests carrying this token.</summary>
     public bool TestTokenMatches(string? given) =>
@@ -655,14 +881,10 @@ public sealed class Backend(JsonSchema schema, string? testToken)
             challenge.Used = true;
         }
         // Only then are the measurements read: first, whether they are the contract's.
-        var evaluation = schema.Evaluate(JsonDocument.Parse(payload).RootElement,
-            new EvaluationOptions { OutputFormat = OutputFormat.List });
-        if (!evaluation.IsValid)
-        {
-            var at = evaluation.Details?.FirstOrDefault(d => !d.IsValid)?.InstanceLocation.ToString() ?? "";
-            throw new Refusal(400, "report_not_accepted", "The report is not the contract's.",
-                new JsonObject { ["check"] = "schema", ["at"] = at });
-        }
+        CheckShape(report);
+        // Then what they are worth, by the contract's rules; then the decision.
+        var judgment = Contract.Judge(report, challenge.Required, definitions);
+        var decision = Contract.Decide(judgment, report);
         var reportId = Guid.NewGuid().ToString();
         lock (_lock)
         {
@@ -670,11 +892,24 @@ public sealed class Backend(JsonSchema schema, string? testToken)
             {
                 InstallationId = session.InstallationId, At = Wire.Now(),
                 OperationSha256 = challenge.OperationSha256, Session = challenge.Session,
+                Judgment = judgment, Next = decision,
             };
         }
-        // Your business logic decides; the answer says what to do next, never a score
-        // or a reason (section 7).
-        return new JsonObject { ["integrity"] = new JsonObject { ["report_id"] = reportId, ["next"] = "allow" } };
+        // The answer says what to do next, never the judgment, a score or a reason (section 7).
+        return new JsonObject { ["integrity"] = new JsonObject { ["report_id"] = reportId, ["next"] = decision } };
+    }
+
+    /// <summary>The report against the contract's schema: its shape.</summary>
+    private void CheckShape(JsonObject report)
+    {
+        var evaluation = schema.Evaluate(JsonDocument.Parse(report.ToJsonString()).RootElement,
+            new EvaluationOptions { OutputFormat = OutputFormat.List });
+        if (!evaluation.IsValid)
+        {
+            var at = evaluation.Details?.FirstOrDefault(d => !d.IsValid)?.InstanceLocation.ToString() ?? "";
+            throw new Refusal(400, "report_not_accepted", "The report is not the contract's.",
+                new JsonObject { ["check"] = "schema", ["at"] = at });
+        }
     }
 
     // --- Section 2: a scan for one action, used by the request it named.
@@ -688,9 +923,10 @@ public sealed class Backend(JsonSchema schema, string? testToken)
         }));
         lock (_lock)
         {
+            // A scan made for this request, under this session, lately -- and one the decision allowed.
             if (!_reports.TryGetValue(call.Header("X-Integrity-Report") ?? "", out var stored) || stored.Used
                 || stored.OperationSha256 != here || stored.Session != call.Bearer
-                || Wire.Now() - stored.At > OperationScanSeconds)
+                || Wire.Now() - stored.At > OperationScanSeconds || stored.Next != "allow")
             {
                 throw new Refusal(403, "needs_scan", "This request needs a scan made for it.");
             }
@@ -830,11 +1066,14 @@ public sealed class Backend(JsonSchema schema, string? testToken)
         var (salt, verifier) = await SlowVerifierAsync(_pinSecret, session.Account!, pin);
         lock (_lock)
         {
-            // A new PIN clears the wrong ones and any lock.
+            // A new PIN clears the wrong ones and any lock, and is a new generation: checks of the
+            // PIN it replaces settle against that one, and the proofs made under it no longer serve.
             account.PinSalt = salt;
             account.PinVerifier = verifier;
             account.PinFailures = 0;
             account.PinLocked = false;
+            account.PinChecking = 0;
+            account.PinGeneration += 1;
         }
         return new JsonObject { ["app_pin_set"] = true };
     }
@@ -866,6 +1105,7 @@ public sealed class Backend(JsonSchema schema, string? testToken)
         }
         var account = AccountOf(session);
         byte[] salt, verifier;
+        int generation;
         lock (_lock)
         {
             if (account.PinVerifier is null || account.PinSalt is null)
@@ -883,36 +1123,53 @@ public sealed class Backend(JsonSchema schema, string? testToken)
                     new JsonObject { ["retry_after_seconds"] = 1 });
             }
             account.PinChecking += 1;   // the attempt, claimed before comparing
+            generation = account.PinGeneration;
             salt = account.PinSalt;
             verifier = account.PinVerifier;
         }
-        bool right;
+        bool? right;
         try
         {
+            await HeldPinCheck();
             right = Wire.Same((await SlowVerifierAsync(_pinSecret, session.Account!, pin!, salt)).Verifier, verifier);
         }
-        finally
+        catch (Exception)
         {
-            lock (_lock)
-            {
-                account.PinChecking -= 1;
-            }
+            right = null;   // the check could not run
         }
-        bool locked;
+        bool current, locked;
         lock (_lock)
         {
-            if (right)
+            // Settled in one step -- the attempt given back and the PIN's count changed under one
+            // lock, so that no other check takes the attempt between -- against the PIN it compared:
+            // a PIN set meanwhile is left alone -- its count, its lock, its checks -- and a check
+            // that could not run gives its attempt back.
+            current = account.PinGeneration == generation;
+            if (current)
             {
-                account.PinFailures = 0;
-            }
-            else
-            {
-                account.PinFailures += 1;
-                account.PinLocked = account.PinFailures >= PinAttempts;
+                account.PinChecking -= 1;
+                if (right == true)
+                {
+                    account.PinFailures = 0;
+                }
+                else if (right == false)
+                {
+                    account.PinFailures += 1;
+                    account.PinLocked = account.PinFailures >= PinAttempts;
+                }
             }
             locked = account.PinLocked;
         }
-        if (!right)
+        if (right is null)
+        {
+            throw new Refusal(503, "pin_unavailable", "The app PIN cannot be checked now; try again.");
+        }
+        if (!current)
+        {
+            // Neither a proof nor a count: the PIN it was right or wrong for is no longer the account's.
+            throw new Refusal(403, "app_pin_invalid", "The app PIN was changed while it was checked; enter it again.");
+        }
+        if (right == false)
         {
             throw locked
                 ? new Refusal(403, "app_pin_locked", "The app PIN is locked; set a new one.")
@@ -923,6 +1180,7 @@ public sealed class Backend(JsonSchema schema, string? testToken)
         {
             ["account"] = session.Account, ["installation_id"] = session.InstallationId,
             ["session_sha256"] = Wire.Sha256Hex(call.Bearer!), ["request"] = target!.DeepClone(), ["expires_at"] = expires,
+            ["pin_generation"] = generation,
         });
         return new JsonObject
         {
@@ -954,6 +1212,15 @@ public sealed class Backend(JsonSchema schema, string? testToken)
         {
             throw new Refusal(403, "needs_app_pin", "This request needs the app PIN.");
         }
+        int generation;
+        lock (_lock)
+        {
+            generation = _accounts[session.Account!].PinGeneration;
+        }
+        if (Wire.Integer(proof["pin_generation"]) != generation)
+        {
+            throw new Refusal(403, "app_pin_not_accepted", "The app PIN was changed since this proof was made; enter it again.");
+        }
         var expires = Wire.Integer(proof["expires_at"]);
         proof.Remove("expires_at");
         var expected = new JsonObject
@@ -965,6 +1232,7 @@ public sealed class Backend(JsonSchema schema, string? testToken)
                 ["method"] = call.Method, ["path"] = call.Path, ["query"] = call.Query,
                 ["body_sha256"] = Wire.Sha256Hex(call.Body), ["nonce"] = nonce,
             },
+            ["pin_generation"] = generation,
         };
         if (expires is null || expires < Wire.Now() || !Wire.Canonical(proof).SequenceEqual(Wire.Canonical(expected)))
         {
@@ -1054,6 +1322,31 @@ public sealed class Backend(JsonSchema schema, string? testToken)
 
     // --- Test controls, on only with --test-controls.
 
+    /// <summary>A PIN check waits here, its attempt claimed, while a test holds PIN checks; released
+    /// with fail, its verifier fails.</summary>
+    private async Task HeldPinCheck()
+    {
+        TaskCompletionSource<bool>? gate;
+        lock (_lock)
+        {
+            gate = _pinGate;
+            if (gate is null)
+            {
+                return;
+            }
+            _pinWaiting += 1;
+        }
+        var fail = await gate.Task;
+        lock (_lock)
+        {
+            _pinWaiting -= 1;
+        }
+        if (fail)
+        {
+            throw new InvalidOperationException("the verifier failed, for a test");
+        }
+    }
+
     public JsonObject Control(string path, JsonObject body)
     {
         lock (_lock)
@@ -1076,6 +1369,34 @@ public sealed class Backend(JsonSchema schema, string? testToken)
                 case "/test/refuse-next":
                     _pending[Wire.Text(body["path"]) ?? ""] = (JsonObject)body.DeepClone();
                     break;
+                case "/test/judge":
+                    // The contract's judgment of a report under a plan of the test's own, as the report
+                    // call would make it.
+                    try
+                    {
+                        var report = (JsonObject)body["report"]!;
+                        CheckShape(report);
+                        var required = ((JsonArray)body["required_probes"]!).Select(p => Wire.Text(p) ?? "");
+                        return new JsonObject { ["judged"] = Contract.Judge(report, required, definitions) };
+                    }
+                    catch (Refusal)
+                    {
+                        return new JsonObject { ["judged"] = "refused" };
+                    }
+                case "/test/pin-checks":
+                    // Hold PIN checks once they claim their attempt, or release those waiting; the
+                    // answer counts those waiting.
+                    var hold = body["hold"] is JsonValue held && held.TryGetValue(out bool on) ? on : (bool?)null;
+                    if (hold == true && _pinGate is null)
+                    {
+                        _pinGate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    }
+                    else if (hold == false && _pinGate is not null)
+                    {
+                        _pinGate.SetResult(body["fail"] is JsonValue fail && fail.TryGetValue(out bool failed) && failed);
+                        _pinGate = null;
+                    }
+                    return new JsonObject { ["ok"] = true, ["waiting"] = _pinWaiting };
                 default:
                     throw new Refusal(404, "no_such_path", "No such control.");
             }
@@ -1112,7 +1433,9 @@ public static class Program
             Console.Error.WriteLine("--test-controls needs SAMPLE_TEST_TOKEN, 16 characters or more");
             Environment.Exit(2);
         }
-        var backend = new Backend(JsonSchema.FromText(File.ReadAllText(schemaPath)), testToken);
+        var schemaText = File.ReadAllText(schemaPath);
+        var definitions = JsonNode.Parse(schemaText)?["$defs"] as JsonObject ?? new JsonObject();   // the x- annotations
+        var backend = new Backend(JsonSchema.FromText(schemaText), definitions, testToken);
 
         var builder = WebApplication.CreateSlimBuilder();
         // ASP.NET Core logs nothing; the handler logs one line per call, never a body or a header.

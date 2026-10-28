@@ -1,7 +1,8 @@
 # Device Trust — what the app sends, and how your backend checks it
 
 The Device Trust plugins (Android, iOS, Flutter, React Native, .NET) are open source. They give your app
-a key that cannot leave the phone, measurements of the phone and of the app running on it, and — if
+a key they never export (section 1 says where the phone keeps it), measurements of the phone and of the
+app running on it, and — if
 you turn them on — a second key that the person must unlock, and a PIN your backend checks, to approve
 a request. **They never decide
 anything: your backend does.** This guide is the protocol the plugins follow — what they
@@ -156,6 +157,10 @@ Your backend, in this order, refusing at the first failure:
 10. Marks the challenge used, in the same transaction.
 
 Only then read the measurements — and keep the signed bytes, or their SHA-256, with what you decided.
+Read them first by the contract's rules (`RULES.md`, section 6): a report whose figures contradict each
+other is not a measurement, clean or otherwise; one with a requested measurement failed, unread or
+without its fields is incomplete — ask again rather than read it as clean; only then do your own rules
+weigh what it found. Decide deliberately what an incomplete report may still do.
 
 ### A scan for one action
 
@@ -174,7 +179,8 @@ and `body_sha256` (the SHA-256 of its exact body).
   report; the app sends it back with the request, in the header `X-Integrity-Report`.
 - When the request arrives, accept it only if that report answered a challenge naming exactly this
   request — same method, path, query and body — under the same account session, within a couple of
-  minutes; and mark the report used in the same transaction, so that it approves one request, once.
+  minutes, and your decision on that report allowed the request; and mark the report used in the same
+  transaction, so that it approves one request, once.
 
 ---
 
@@ -300,7 +306,8 @@ person's own re-authentication — your account's password, for example (section
    account and the PIN, keyed by a secret your database never holds, so that a copy of the database
    checks nothing. Never log the PIN.
 4. Clears the count of wrong PINs and any lock: a new PIN is how a person who forgot or locked theirs
-   gets back in.
+   gets back in. The PIN it replaces stops counting at once: checks of it still running no longer hold
+   the new PIN's attempts, and the proofs made under it no longer serve.
 
 **Unlocking one request.** The app signs the request that needs the PIN first, which fixes its request
 proof's nonce. Then, under the same account session and with a request proof of its own, it sends the
@@ -311,12 +318,18 @@ PIN with a description of that request — its `method`, `path`, `query`, `body_
 2. Claims one attempt before comparing, so that PINs sent at the same moment cannot pass your limit, and
    counts a wrong PIN; the last wrong one you allow locks the PIN until a new one is set. While the PIN
    is being checked for another request, it answers 429 with a short wait and counts nothing.
-3. Answers a proof it makes itself — an HMAC, under a key of its own, over the account, the
-   installation, the session, the request described and an expiry about two minutes ahead.
+3. Settles each check in one step, against the PIN it compared — note which PIN that was (when it was
+   set, or a number that grows with each PIN) when you claim the attempt. A check that finishes after a
+   new PIN was set unlocks nothing and changes nothing — not the new PIN's count, not its lock — and is
+   answered as a wrong PIN; one that could not run gives its attempt back.
+4. Answers a proof it makes itself — an HMAC, under a key of its own, over the account, the
+   installation, the session, the request described, the PIN it checked and an expiry about two minutes
+   ahead.
 
 The request then carries that proof in `X-App-PIN-Proof`. Your backend checks that it made the proof,
-that it has not expired, that the account, installation and session are this request's, and that the
-method, path, query, body hash and nonce are this request's. That nonce is stored once with the request
+that it has not expired, that the PIN it names is still the account's PIN, that the account,
+installation and session are this request's, and that the method, path, query, body hash and nonce are
+this request's. That nonce is stored once with the request
 proof, so one PIN entry unlocks one request, once.
 
 ---
@@ -416,7 +429,7 @@ acts on the codes below; any other refusal it hands to your app as it came.
 | 400, 401 | `invalid_installation_signature`, `integrity_report_stale`, `integrity_probe_missing` (with `details.missing_probes`) | a signature that does not verify, a phone clock far off, a measurement left out | stops, and tells your app |
 | 400 | `invalid_operation` | an `operation` you cannot read, or one named under the installation session rather than an account session | stops, and tells your app |
 | 403 | `app_pin_not_set` | the account has no app PIN | tells your app, which asks the person to set one |
-| 403 | `app_pin_invalid` | a wrong app PIN, which counts | tells your app, which asks for the PIN again |
+| 403 | `app_pin_invalid` | a wrong app PIN, which counts — or one checked against a PIN replaced meanwhile, which does not | tells your app, which asks for the PIN again |
 | 403 | `app_pin_locked` | too many wrong app PINs | tells your app: a new PIN, set with the person's re-authentication, unlocks it |
 
 ### Carrying the messages yourself

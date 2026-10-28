@@ -95,6 +95,171 @@ def iso(seconds):
     return datetime.fromtimestamp(seconds, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# --- The contract's rules (RULES.md): what a report's measurements are worth
+# before any business logic weighs them -- never a score. A report is judged
+# over the measurements its challenge required: complete, partial (part of
+# the app's code compared), incomplete (something not measured) or invalid
+# (figures that cannot all be true).
+
+QUALITIES = ("complete", "partial", "incomplete", "invalid")   # best to worst
+# Where code is always mapped, so that a comparison there finds some
+# (RULES.md 4): on an iPhone only the app's own, the rest being unreadable.
+REGIONS = {"android": ("core", "ext", "app"), "ios": ("app",)}
+IOS_COVERAGE = ("app_images_expected", "app_images_compared", "app_images_unreadable",
+                "app_images_skipped", "app_expected_bytes", "app_compared_bytes",
+                "app_unreadable_bytes", "app_skipped_bytes", "app_complete",
+                "main_executable_compared")
+
+
+def is_int(value):
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def judge(report, required, definitions):
+    """The contract's judgment of a report whose shape the schema accepted:
+    one of QUALITIES. Split APKs out of order (RULES.md 6, the one rule a
+    schema cannot state) are refused rather than read."""
+    platform, results = report["platform"], report["probe_results"]
+    identity = results.get("app_identity")
+    splits = identity.get("split_apks") if isinstance(identity, dict) else None
+    if splits is not None:
+        names = [entry["name"] for entry in splits]
+        if names != sorted(set(names)):
+            raise Refusal(400, "report_not_accepted", "The report is not the contract's.",
+                          {"check": "split_apks"})
+    found = ["complete"]
+    for name in required:
+        value = results.get(name)
+        definition = definitions.get("%s.%s" % (platform, name), {})
+        if not isinstance(value, dict) or value.get("status") != "ok":
+            found.append("incomplete")          # failed or unsupported: not measured (2)
+            continue
+        # ok is a claim: a measurement is complete with every field it lists,
+        # and with nothing in unread (2).
+        if (any(value.get(field) is None for field in definition.get("x-complete-when-ok", ()))
+                or value.get("unread")):
+            found.append("incomplete")
+        # Failed reads, not clean values (7).
+        if ((name in ("runtime_maps", "exec_mappings") and value.get("maps_lines") == 0)
+                or (name == "instrumentation_threads" and value.get("thread_count") == 0)):
+            found.append("incomplete")
+        if name == "exec_mappings" and wx_sizes_without_mappings(value):
+            found.append("invalid")
+        if name == "code_integrity":
+            found.append(code_comparison(platform, value, definition))
+    # Contradictions across measurements (7).
+    capture, device = results.get("screen_capture"), results.get("device")
+    if (isinstance(capture, dict) and capture.get("status") == "ok"
+            and capture.get("recording_status") == "unsupported"
+            and (platform == "ios" or (isinstance(device, dict) and is_int(device.get("sdk_int"))
+                                       and device["sdk_int"] >= 35))):
+        found.append("invalid")                 # recording unsupported where it is measured
+    location, mock = results.get("location"), results.get("mock_location")
+    if (isinstance(location, dict) and isinstance(mock, dict)
+            and location.get("status") == "ok" and mock.get("status") == "ok"
+            and is_int(location.get("fix_time")) and is_int(mock.get("fix_time"))
+            and location["fix_time"] != mock["fix_time"]):
+        found.append("invalid")                 # two fixes presented as one (5)
+    return max(found, key=QUALITIES.index)
+
+
+def wx_sizes_without_mappings(maps):
+    """No writable-and-executable mapping, with the sizes of such mappings
+    listed (RULES.md 7)."""
+    classes = []
+    for part in str(maps.get("wx_size_classes") or "").split(","):
+        if part.strip():
+            size, _, count = (piece.strip() for piece in part.partition(":"))
+            if not (size.isdigit() and count.isdigit()):
+                classes = []                    # not a list of sizes
+                break
+            classes.append(part)
+    extremes = maps.get("wx_smallest_bytes") or maps.get("wx_largest_bytes")
+    return maps.get("wx_mappings") == 0 and not maps.get("wx_bytes") and bool(classes or extremes)
+
+
+def code_comparison(platform, code, definition):
+    """The comparison of code in memory with its files (RULES.md 4): invalid
+    when its figures do not add up; incomplete when it did not run, lacks a
+    figure, or compared nothing where code always is; partial when it
+    compared part of the code."""
+    if not (android_coverage_adds_up(code) if platform == "android"
+            else ios_coverage_adds_up(code)):
+        return "invalid"
+    if code.get("checked") is not True or any(
+            code.get(field) is None for field in definition.get("x-complete-when-checked", ())):
+        return "incomplete"
+    if any(code.get("%s_compared_bytes" % region) == 0 for region in REGIONS[platform]):
+        return "incomplete"
+    if platform == "ios":
+        return "complete" if code["app_complete"] else "partial"
+    short = any(code["%s_compared_bytes" % region] < code["%s_expected_bytes" % region]
+                for region in REGIONS["android"])
+    return "partial" if short or (code.get("protect_restore_failures") or 0) > 0 else "complete"
+
+
+def android_coverage_adds_up(code):
+    """In each region the expected bytes are the compared, skipped and
+    unreadable ones together, and <region>_complete is true exactly when some
+    code was expected and all of it was compared."""
+    for region in REGIONS["android"]:
+        expected = code.get("%s_expected_bytes" % region)
+        if expected is None:
+            continue
+        parts = [code.get("%s_%s_bytes" % (region, kind))
+                 for kind in ("compared", "skipped", "unreadable")]
+        if not all(is_int(part) for part in parts) or sum(parts) != expected:
+            return False
+        complete = code.get("%s_complete" % region)
+        if complete is not None and complete != (expected > 0 and parts[0] == expected):
+            return False
+    return True
+
+
+def ios_coverage_adds_up(code):
+    """Images and bytes both add up -- expected = compared + unreadable +
+    skipped -- and app_complete is true exactly when every image was
+    compared, the main executable among them; bytes are compared exactly
+    when images are, and each image not compared is named. A collector that
+    reports only part of it is judged by its fields instead."""
+    if any(code.get(field) is None for field in IOS_COVERAGE):
+        return True
+    figures = [code[field] for field in IOS_COVERAGE[:8]]
+    if not all(is_int(figure) for figure in figures):
+        return False
+    expected, compared, unreadable, skipped = figures[:4]
+    expected_bytes, compared_bytes, unreadable_bytes, skipped_bytes = figures[4:]
+    complete = expected > 0 and compared == expected
+    main, named = code["main_executable_compared"], code.get("app_images_not_compared")
+    return not (
+        expected != compared + unreadable + skipped
+        or expected_bytes != compared_bytes + unreadable_bytes + skipped_bytes
+        or code["app_complete"] is not complete
+        or (complete and (unreadable_bytes or skipped_bytes))
+        or (unreadable_bytes and not unreadable) or (skipped_bytes and not skipped)
+        or (compared_bytes > 0) != (compared > 0)
+        or (code.get("checked") is not None and code["checked"] is not (compared > 0))
+        or (main is True and compared == 0) or (complete and main is not True)
+        or (named is not None and (len(named) > unreadable + skipped
+                                   or (unreadable + skipped > 0 and not named))))
+
+
+# Your business logic decides (the guide, section 7), and this is where it
+# goes. This sample decides on the contract's judgment alone and scores
+# nothing: a complete report lets the action go on, and so -- by this sample's
+# choice -- does a partial one, whose comparison found nothing in the code it
+# could read; an incomplete one asks for a scan again, since a failed read is
+# no proof of an attack; and a report whose figures contradict each other is
+# held for review. Only a report allowed here approves a scan made for one
+# action.
+NEXT = {"complete": "allow", "partial": "allow", "incomplete": "scan_again", "invalid": "review"}
+
+
+def decide(judgment, report):
+    """What to do next, for this report: allow, scan_again or review."""
+    return NEXT[judgment]
+
+
 class Refusal(Exception):
     """An answer of {"error": {"code", "message", "details"}} (section 4)."""
 
@@ -142,6 +307,7 @@ def slow_verifier(secret, subject, value, salt=None):
 class Backend:
     def __init__(self, schema, test_token):
         self.validator = jsonschema.Draft202012Validator(schema)
+        self.definitions = schema.get("$defs", {})   # the contract's x- annotations
         self.test_token = test_token     # test controls answer only this token
         self.lock = threading.Lock()
         # Secrets made at start: a restart forgets every session and challenge.
@@ -159,6 +325,8 @@ class Backend:
         self.reports = {}            # report_id -> stored report
         self.accounts = {}           # handle -> account
         self.pending = {}            # test control: path -> the next request's refusal
+        self.pin_gate = None         # test control: while set, PIN checks wait on it
+        self.pin_waiting = 0         # test control: the PIN checks waiting now
 
     def now(self):
         return int(time.time())
@@ -432,21 +600,28 @@ class Backend:
             challenge["used"] = True
         # Only then are the measurements read: first, whether they are the
         # contract's.
-        problems = sorted(self.validator.iter_errors(report),
-                          key=lambda e: list(e.absolute_path))
-        if problems:
-            raise Refusal(400, "report_not_accepted", "The report is not the contract's.",
-                          {"check": "schema", "at": "/".join(map(str, problems[0].absolute_path))})
+        self.check_shape(report)
+        # Then what they are worth, by the contract's rules; then the decision.
+        judgment = judge(report, challenge["required"], self.definitions)
+        decision = decide(judgment, report)
         report_id = str(uuid.uuid4())
         with self.lock:
             self.reports[report_id] = {
                 "installation_id": session["installation_id"], "at": self.now(), "used": False,
                 "operation_sha256": challenge["operation_sha256"], "session": challenge["session"],
-                "report_sha256": sha256_hex(payload),
+                "report_sha256": sha256_hex(payload), "judgment": judgment, "next": decision,
             }
-        # Your business logic decides; the answer says what to do next, never
-        # a score or a reason (section 7).
-        return {"integrity": {"report_id": report_id, "next": "allow"}}
+        # The answer says what to do next, never the judgment, a score or a
+        # reason (section 7).
+        return {"integrity": {"report_id": report_id, "next": decision}}
+
+    def check_shape(self, report):
+        """The report against the contract's schema: its shape."""
+        problems = sorted(self.validator.iter_errors(report),
+                          key=lambda e: list(e.absolute_path))
+        if problems:
+            raise Refusal(400, "report_not_accepted", "The report is not the contract's.",
+                          {"check": "schema", "at": "/".join(map(str, problems[0].absolute_path))})
 
     # --- Section 2: a scan for one action, used by the request it named.
 
@@ -457,9 +632,12 @@ class Backend:
                                      "body_sha256": sha256_hex(request.body)}))
         with self.lock:
             stored = self.reports.get(report_id or "")
+            # A scan made for this request, under this session, lately -- and
+            # one the decision allowed.
             if (stored is None or stored["used"] or stored["operation_sha256"] != here
                     or stored["session"] != request.bearer
-                    or self.now() - stored["at"] > OPERATION_SCAN_SECONDS):
+                    or self.now() - stored["at"] > OPERATION_SCAN_SECONDS
+                    or stored["next"] != "allow"):
                 raise Refusal(403, "needs_scan", "This request needs a scan made for it.")
             stored["used"] = True
 
@@ -549,8 +727,11 @@ class Backend:
             raise Refusal(400, "bad_request", "The PIN is %d digits." % PIN_LENGTH, {"field": "pin"})
         salt, verifier = slow_verifier(self.pin_secret, session["account"], pin)
         with self.lock:
-            # A new PIN clears the wrong ones and any lock.
-            account.update(pin_salt=salt, pin_verifier=verifier, pin_failures=0, pin_locked=False)
+            # A new PIN clears the wrong ones and any lock, and is a new
+            # generation: checks of the PIN it replaces settle against that
+            # one, and the proofs made under it no longer serve.
+            account.update(pin_salt=salt, pin_verifier=verifier, pin_failures=0, pin_locked=False,
+                           pin_checking=0, pin_generation=account["pin_generation"] + 1)
         return {"app_pin_set": True}
 
     def prove_app_pin(self, request, body):
@@ -577,25 +758,44 @@ class Backend:
                 raise Refusal(429, "pin_busy", "The PIN is being checked; try again in a moment.",
                               {"retry_after_seconds": 1})
             account["pin_checking"] += 1     # the attempt, claimed before comparing
+            generation = account["pin_generation"]
             salt, verifier = account["pin_salt"], account["pin_verifier"]
-        right = hmac.compare_digest(
-            slow_verifier(self.pin_secret, session["account"], pin, salt)[1], verifier)
+        try:
+            self._held_pin_check()
+            right = hmac.compare_digest(
+                slow_verifier(self.pin_secret, session["account"], pin, salt)[1], verifier)
+        except Exception:
+            right = None                     # the check could not run
         with self.lock:
-            account["pin_checking"] -= 1
-            if right:
-                account["pin_failures"] = 0
-            else:
-                account["pin_failures"] += 1
-                account["pin_locked"] = account["pin_failures"] >= PIN_ATTEMPTS
+            # Settled in one step, against the PIN it compared: a PIN set
+            # meanwhile is left alone -- its count, its lock, its checks --
+            # and a check that could not run gives its attempt back.
+            current = account["pin_generation"] == generation
+            if current:
+                account["pin_checking"] -= 1
+                if right:
+                    account["pin_failures"] = 0
+                elif right is False:
+                    account["pin_failures"] += 1
+                    account["pin_locked"] = account["pin_failures"] >= PIN_ATTEMPTS
+            locked = account["pin_locked"]
+        if right is None:
+            raise Refusal(503, "pin_unavailable", "The app PIN cannot be checked now; try again.")
+        if not current:
+            # Neither a proof nor a count: the PIN it was right or wrong for
+            # is no longer the account's.
+            raise Refusal(403, "app_pin_invalid",
+                          "The app PIN was changed while it was checked; enter it again.")
         if not right:
-            if account["pin_locked"]:
+            if locked:
                 raise Refusal(403, "app_pin_locked", "The app PIN is locked; set a new one.")
             raise Refusal(403, "app_pin_invalid", "The app PIN is wrong.")
         expires = self.now() + PIN_PROOF_SECONDS
         claims = canonical({"account": session["account"],
                             "installation_id": session["installation_id"],
                             "session_sha256": sha256_hex(request.bearer.encode("utf-8")),
-                            "request": target, "expires_at": expires})
+                            "request": target, "expires_at": expires,
+                            "pin_generation": generation})
         mac = hmac.new(self.pin_proof_key, claims, hashlib.sha256).digest()
         return {"app_pin_proof": "%s.%s" % (b64url_encode(claims), b64url_encode(mac)),
                 "expires_at": iso(expires)}
@@ -611,6 +811,11 @@ class Backend:
             proof = None
         if proof is None:
             raise Refusal(403, "needs_app_pin", "This request needs the app PIN.")
+        with self.lock:
+            generation = self.accounts[session["account"]]["pin_generation"]
+        if proof.get("pin_generation") != generation:
+            raise Refusal(403, "app_pin_not_accepted",
+                          "The app PIN was changed since this proof was made; enter it again.")
         expected = {"account": session["account"], "installation_id": session["installation_id"],
                     "session_sha256": sha256_hex(request.bearer.encode("utf-8")),
                     "request": {"method": request.method, "path": request.path,
@@ -635,7 +840,7 @@ class Backend:
                 account = self.accounts.setdefault(handle, {
                     "password_salt": salt, "password_verifier": verifier, "pin_salt": None,
                     "pin_verifier": None, "pin_failures": 0, "pin_locked": False,
-                    "pin_checking": 0})
+                    "pin_checking": 0, "pin_generation": 0})
         self._reauthenticate(account, handle, password)
         token = secrets.token_urlsafe(32)
         with self.lock:
@@ -670,6 +875,20 @@ class Backend:
 
     # --- Test controls, on only with --test-controls.
 
+    def _held_pin_check(self):
+        """A PIN check waits here, its attempt claimed, while a test holds PIN
+        checks; released with fail, its verifier fails."""
+        with self.lock:
+            gate = self.pin_gate
+            if gate is None:
+                return
+            self.pin_waiting += 1
+        gate["released"].wait()
+        with self.lock:
+            self.pin_waiting -= 1
+        if gate["fail"]:
+            raise RuntimeError("the verifier failed, for a test")
+
     def control(self, path, body):
         with self.lock:
             if path == "/test/expire-sessions":
@@ -681,6 +900,25 @@ class Backend:
                     self.by_thumbprint.pop(record["thumbprint"], None)
             elif path == "/test/refuse-next":
                 self.pending[body["path"]] = body
+            elif path == "/test/judge":
+                # The contract's judgment of a report under a plan of the
+                # test's own, as the report call would make it.
+                try:
+                    self.check_shape(body["report"])
+                    return {"judged": judge(body["report"], body["required_probes"],
+                                            self.definitions)}
+                except Refusal:
+                    return {"judged": "refused"}
+            elif path == "/test/pin-checks":
+                # Hold PIN checks once they claim their attempt, or release
+                # those waiting; the answer counts those waiting.
+                if body.get("hold") is True and self.pin_gate is None:
+                    self.pin_gate = {"released": threading.Event(), "fail": False}
+                elif body.get("hold") is False and self.pin_gate is not None:
+                    self.pin_gate["fail"] = body.get("fail") is True
+                    self.pin_gate["released"].set()
+                    self.pin_gate = None
+                return {"ok": True, "waiting": self.pin_waiting}
             else:
                 raise Refusal(404, "no_such_path", "No such control.")
         return {"ok": True}

@@ -17,10 +17,15 @@ the section numbers in the code:
   emulator's (or simulator's) build values; and for every personal measurement (section 8), so that the
   example app can show each one it enables — a production backend asks only for those it uses; the
   report's ten checks in order; then
-  the report against the contract's schema; the answer `{"integrity": {"report_id": …, "next":
-  "allow"}}` — what to do next, never a score.
+  the report against the contract's schema; then against the contract's rules (`RULES.md`), which judge
+  it complete, partial (part of the app's code compared), incomplete (something not measured) or
+  invalid (figures that cannot all be true); then a decision, in `decide` — where your business logic
+  goes. This sample's own scores nothing: it allows a complete report and, by its choice, a partial one,
+  asks for a scan again after an incomplete one, and holds an invalid one for review. The answer is
+  `{"integrity": {"report_id": …, "next": "allow"}}`, or `"scan_again"`, or `"review"` — what to do
+  next, never the judgment or a score.
 - **A scan for one action** (section 2): named only under an account session; its report approves that
-  one request, once, sent back as `X-Integrity-Report`.
+  one request, once, sent back as `X-Integrity-Report` — and only when the decision allowed it.
 - **Request proofs** (section 3): every field against the request received, the clock window, the
   signature, then the nonce stored once — a proof sent twice is refused.
 - **Step-up and the app PIN** (section 3): the person's approval checked against the request and its
@@ -28,7 +33,10 @@ the section numbers in the code:
   key's proof bound to the request proof's nonce, every check of the key before the password, and kept
   for that account alone; the PIN set with the person's password and kept as a slow keyed verifier, its
   attempts claimed before comparing, the last wrong one locking it, and the backend's own short-lived
-  proof for one request.
+  proof for one request. Each PIN set is a new generation: a check settles, in one step, only against
+  the PIN it compared — one that finishes after a new PIN was set unlocks nothing and counts against
+  nothing — a check that could not run gives its attempt back (`503 pin_unavailable`), and a proof
+  made under an older PIN no longer serves.
 
 They are **samples**: one process, everything in memory, secrets made at start, no rate limits and no
 account system beyond a demonstration sign-in. A production backend keeps its records in a database,
@@ -50,7 +58,11 @@ session and request proof the guide describes:
 With `--test-controls`, and only for requests carrying `X-Test-Token: $SAMPLE_TEST_TOKEN` (16
 characters or more), `POST /test/expire-sessions`, `POST /test/forget` `{"installation_id"}` and
 `POST /test/refuse-next` `{"path", "status", "code", "details"}` let a test reach each of the guide's
-protocol errors. A deployed sample runs without them.
+protocol errors; `POST /test/judge` `{"report", "required_probes"}` answers how the contract's rules
+judge a report under a plan of the test's own (`{"judged": …}`, `refused` for one the schema or the
+split-APK order refuses); and `POST /test/pin-checks` `{"hold": true}` holds each app PIN check once it has
+claimed its attempt, until `{"hold": false}` releases them (with `"fail": true`, as if their verifier
+broke) — answering `{"waiting": n}`, the checks held. A deployed sample runs without them.
 
 Each sample logs one line per call — its method, path, status and any refusal's code — and never a
 body or a header, which hold PINs and tokens.
@@ -74,8 +86,9 @@ dotnet bin/Release/net10.0/SampleBackend.dll --port 8787 --schema <contract>/rep
 ## The plugin end to end
 
 `run_e2e.sh` starts a sample with its test controls and a token of its own, runs the plugin's
-`test/backend_e2e_test.dart` against it — real HTTP, real P-256 signatures, the contract's complete
-Android sample as the phone's measurements — and stops it. Against a deployed sample, set
+`test/backend_e2e_test.dart` against it — real HTTP, real P-256 signatures, the contract's Android
+samples as the phone's measurements, and every sample of the contract judged as it says — and stops
+it. Against a deployed sample, set
 `NECESSARY_BACKEND_URL` alone and run the test: the protocol-error test, which needs the controls, is
 skipped.
 

@@ -1,6 +1,7 @@
 // The plugin end to end against a sample backend (backend/), over real HTTP
 // with real P-256 signatures: only the phone's keystore and collector are
-// replaced, by a software key and the contract's complete Android sample.
+// replaced, by a software key and the contract's Android samples -- the
+// complete one unless a test says otherwise.
 // Runs when NECESSARY_BACKEND_URL names a backend; skipped otherwise. The
 // protocol-error test needs the backend's test controls on, and
 // NECESSARY_TEST_TOKEN the token they answer (backend/run_e2e.sh does both);
@@ -148,6 +149,15 @@ class _MemoryStore extends InstallationStore {
   @override
   Future<void> saveInstallationId(String installationId) async =>
       stored = installationId;
+
+  bool reenrolPending = false;
+
+  @override
+  Future<bool> stepUpReenrolPending() async => reenrolPending;
+
+  @override
+  Future<void> setStepUpReenrolPending(bool pending) async =>
+      reenrolPending = pending;
 }
 
 class _StepUpKey extends NativeStepUpKey {
@@ -189,17 +199,24 @@ class _StepUpKey extends NativeStepUpKey {
   }
 }
 
-/// Answers with the contract's complete Android sample, whatever is asked.
+const String _samples = 'contract/report-1/android-8-ios-5/samples';
+
+/// One of the contract's sample reports, with its plan and how it is judged.
+Map<String, dynamic> _sample(String name) =>
+    jsonDecode(repositoryFile('$_samples/$name.json').readAsStringSync())
+        as Map<String, dynamic>;
+
+/// Answers with one of the contract's Android samples, whatever is asked.
 class _SampleCollector extends NativeIntegrityCollector {
-  static final Map<String, dynamic> _probes =
-      ((jsonDecode(
-                    repositoryFile(
-                      'contract/report-1/android-8-ios-5/samples/android-8-complete.json',
-                    ).readAsStringSync(),
-                  )
-                  as Map<String, dynamic>)['report']
-              as Map<String, dynamic>)['probe_results']
-          as Map<String, dynamic>;
+  _SampleCollector([
+    String sample = 'android-8-complete',
+    this.collectorVersion = 8,
+  ]) : _probes =
+           (_sample(sample)['report'] as Map<String, dynamic>)['probe_results']
+               as Map<String, dynamic>;
+
+  final Map<String, dynamic> _probes;
+  final int collectorVersion;
 
   @override
   Future<Map<String, dynamic>> collect({
@@ -210,7 +227,7 @@ class _SampleCollector extends NativeIntegrityCollector {
   }) async => <String, dynamic>{
     'platform': 'android',
     'challenge_nonce_echo': challengeNonce,
-    'collector_version': 8,
+    'collector_version': collectorVersion,
     'probes': _probes,
   };
 }
@@ -230,17 +247,22 @@ DeviceTrust _trust({
   StepUpOptions? stepUp,
   AppPinOptions? appPin,
   _StepUpKey? stepUpKey,
+  _SampleCollector? collector,
 }) => DeviceTrust.over(
   HttpTransport(_backend!),
   stepUp: stepUp,
   appPin: appPin,
   store: _MemoryStore(),
-  collector: _SampleCollector(),
+  collector: collector ?? _SampleCollector(),
   hintReader: _Hint(),
   stepUpKey: stepUpKey ?? _StepUpKey(),
 );
 
-Future<void> _control(String path, Map<String, dynamic> body) async {
+/// A test control, and its answer.
+Future<Map<String, dynamic>> _control(
+  String path,
+  Map<String, dynamic> body,
+) async {
   final http.Response response = await http.post(
     Uri.parse('$_backend$path'),
     headers: <String, String>{
@@ -255,6 +277,33 @@ Future<void> _control(String path, Map<String, dynamic> body) async {
     reason:
         'the backend runs with --test-controls, answering NECESSARY_TEST_TOKEN',
   );
+  return jsonDecode(response.body) as Map<String, dynamic>;
+}
+
+/// From now on the backend holds each app PIN check once it has claimed its
+/// attempt, until [_releasePinChecks].
+Future<void> _holdPinChecks() =>
+    _control('/test/pin-checks', <String, dynamic>{'hold': true});
+
+/// Releases the checks held -- with [fail], as if their verifier broke.
+Future<void> _releasePinChecks({bool fail = false}) => _control(
+  '/test/pin-checks',
+  <String, dynamic>{'hold': false, 'fail': fail},
+);
+
+/// Waits until [count] app PIN checks are held.
+Future<void> _pinChecksHeld(int count) async {
+  for (int i = 0; i < 200; i++) {
+    final Map<String, dynamic> answer = await _control(
+      '/test/pin-checks',
+      <String, dynamic>{},
+    );
+    if (answer['waiting'] == count) {
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+  }
+  fail('the backend never held $count app PIN checks');
 }
 
 /// This backend's own sign-in, under the installation session: its account
@@ -361,6 +410,75 @@ void main() {
       );
       await expectLater(transfer(scan.reportId), _refused('needs_scan'));
     });
+
+    test('a scan for one action approves it only when the backend allows '
+        'it: the contract judges a report before anything else', () async {
+      const String body = '{"amount":25,"to":"payee-7"}';
+      for (final (String sample, String next) in <(String, String)>[
+        ('android-8-complete', 'allow'),
+        ('android-8-incomplete', 'scan_again'),
+        ('android-8-invalid', 'review'),
+      ]) {
+        final DeviceTrust trust = _trust(collector: _SampleCollector(sample));
+        await trust.start();
+        final String account = await _signIn(trust);
+        final ScanResult scan = await trust.scan(
+          session: account,
+          operation: describeOperation('POST', '/v1/demo/transfer', body),
+        );
+        expect(
+          (scan.answer['integrity'] as Map<String, dynamic>)['next'],
+          next,
+          reason: sample,
+        );
+        final Future<Map<String, dynamic>> transfer = trust.send(
+          await trust.signRequest(
+            method: 'POST',
+            path: '/v1/demo/transfer',
+            bearer: account,
+            body: body,
+            reportId: scan.reportId,
+          ),
+        );
+        if (next == 'allow') {
+          expect(
+            await transfer,
+            containsPair('done', '/v1/demo/transfer'),
+            reason: sample,
+          );
+        } else {
+          await expectLater(transfer, _refused('needs_scan'), reason: sample);
+        }
+      }
+      // A collector older than the contract is refused, never read.
+      final DeviceTrust old = _trust(
+        collector: _SampleCollector('android-8-complete', 7),
+      );
+      await old.start();
+      await expectLater(old.scan(), _refused('report_not_accepted'));
+    });
+
+    test('every sample of the contract is judged as it says, under its own '
+        'plan', () async {
+      final List<File> samples =
+          repositoryDirectory(_samples).listSync().whereType<File>().where((
+            File file,
+          ) {
+            return file.path.endsWith('.json');
+          }).toList()..sort((File a, File b) => a.path.compareTo(b.path));
+      expect(samples, hasLength(11));
+      for (final File file in samples) {
+        final Map<String, dynamic> sample =
+            jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+        final Map<String, dynamic> answer =
+            await _control('/test/judge', <String, dynamic>{
+              'report': sample['report'],
+              'required_probes':
+                  (sample['plan'] as Map<String, dynamic>)['required_probes'],
+            });
+        expect(answer['judged'], sample['expect'], reason: file.path);
+      }
+    }, skip: _testToken == null ? 'NECESSARY_TEST_TOKEN is not set' : false);
 
     test("a sensitive request needs the person's approval: step-up, the app "
         'PIN, or both', () async {
@@ -519,6 +637,87 @@ void main() {
         _refused('step_up_not_accepted'),
       );
     });
+
+    test('an app PIN check settles against the PIN it compared: a PIN set '
+        'meanwhile is left alone, and the proofs made before it no longer '
+        'serve', () async {
+      final DeviceTrust trust = _trust(appPin: const AppPinOptions());
+      await trust.start();
+      final String account = await _signIn(trust, password: 'pin owner');
+      Future<void> setPin(String pin) => trust.setAppPin(
+        session: account,
+        pin: pin,
+        reauthentication: <String, dynamic>{'password': 'pin owner'},
+      );
+      Future<RequestProof> unlock(String pin) => trust.signRequest(
+        method: 'POST',
+        path: '/v1/demo/sensitive',
+        bearer: account,
+        body: '{"payee":"payee-7"}',
+        appPin: pin,
+      );
+      Future<Map<String, dynamic>> sensitive(String pin) async =>
+          trust.send(await unlock(pin));
+      final Matcher done = containsPair('done', '/v1/demo/sensitive');
+      await setPin('111111');
+
+      // A right PIN still being checked when a new one is set unlocks
+      // nothing; asked now, the old PIN is simply wrong. (Each check held is
+      // expected at once, so that its refusal never goes unheard.)
+      await _holdPinChecks();
+      final Future<void> right = expectLater(
+        unlock('111111'),
+        _refused('app_pin_invalid'),
+      );
+      await _pinChecksHeld(1);
+      await setPin('222222');
+      await _releasePinChecks();
+      await right;
+      await expectLater(sensitive('111111'), _refused('app_pin_invalid'));
+      expect(await sensitive('222222'), done);
+
+      // Five wrong PINs being checked hold every attempt, so a sixth waits;
+      // when a new PIN is set meanwhile they neither count against it nor
+      // lock it.
+      await _holdPinChecks();
+      final List<Future<void>> wrong = <Future<void>>[
+        for (int i = 0; i < 5; i++)
+          expectLater(unlock('99999$i'), _refused('app_pin_invalid')),
+      ];
+      await _pinChecksHeld(5);
+      await expectLater(unlock('999995'), _refused('pin_busy'));
+      await setPin('333333');
+      await _releasePinChecks();
+      await Future.wait(wrong);
+      expect(await sensitive('333333'), done);
+
+      // A proof made before a new PIN no longer serves.
+      final RequestProof made = await unlock('333333');
+      await setPin('444444');
+      await expectLater(trust.send(made), _refused('app_pin_not_accepted'));
+      expect(await sensitive('444444'), done);
+
+      // A check that could not run gives its attempt back: four wrong PINs
+      // after it still leave the last attempt, which two checks at once
+      // cannot both take.
+      await _holdPinChecks();
+      final Future<void> broken = expectLater(
+        unlock('444444'),
+        _refused('pin_unavailable'),
+      );
+      await _pinChecksHeld(1);
+      await _releasePinChecks(fail: true);
+      await broken;
+      for (int i = 0; i < 4; i++) {
+        await expectLater(sensitive('00000$i'), _refused('app_pin_invalid'));
+      }
+      await _holdPinChecks();
+      final Future<RequestProof> last = unlock('444444');
+      await _pinChecksHeld(1);
+      await expectLater(unlock('444444'), _refused('pin_busy'));
+      await _releasePinChecks();
+      expect(await trust.send(await last), done);
+    }, skip: _testToken == null ? 'NECESSARY_TEST_TOKEN is not set' : false);
 
     test("the guide's protocol errors, each acted on once", () async {
       final DeviceTrust trust = _trust();

@@ -141,6 +141,15 @@ class _Store extends InstallationStore {
   Future<void> saveInstallationId(String installationId) async {
     saved = installationId;
   }
+
+  bool reenrolPending = false;
+
+  @override
+  Future<bool> stepUpReenrolPending() async => reenrolPending;
+
+  @override
+  Future<void> setStepUpReenrolPending(bool pending) async =>
+      reenrolPending = pending;
 }
 
 class _Collector extends NativeIntegrityCollector {
@@ -231,6 +240,20 @@ class _DyingStepUpKey extends _StepUpKey {
   Future<void> deleteKey() async => deleted += 1;
 }
 
+/// A dying key whose first prompt after its replacement is cancelled.
+class _CancelledStepUpKey extends _DyingStepUpKey {
+  bool cancelled = false;
+
+  @override
+  Future<String> sign(String payloadBase64Url, {required String reason}) async {
+    if (deleted > 0 && !cancelled) {
+      cancelled = true;
+      throw NativeKeyException('STEPUP_CANCELLED', 'the person cancelled');
+    }
+    return super.sign(payloadBase64Url, reason: reason);
+  }
+}
+
 /// Refuses the first key it is asked for, then makes one.
 class _FlakyStepUpKey extends _StepUpKey {
   int attempts = 0;
@@ -286,6 +309,22 @@ ApiException _refusal(
   int status, [
   Map<String, dynamic>? details,
 ]) => ApiException(code, statusCode: status, code: code, details: details);
+
+/// One approval with the step-up key, for a payment.
+Future<RequestProof> _approve(DeviceTrust trust) => trust.signRequest(
+  method: 'POST',
+  path: '/v1/pay',
+  bearer: 'account-session',
+  stepUp: true,
+);
+
+final Matcher _reenrolPending = throwsA(
+  isA<NativeKeyException>().having(
+    (NativeKeyException e) => e.code,
+    'code',
+    'STEPUP_REENROL_PENDING',
+  ),
+);
 
 void main() {
   setUp(() => debugDefaultTargetPlatformOverride = TargetPlatform.android);
@@ -444,6 +483,91 @@ void main() {
       stepUp: true,
     );
     expect(approval.headers.keys, contains('X-Step-Up-Proof'));
+  });
+
+  test('a re-enrolment the backend refused leaves approvals waiting for it, '
+      'across a restart too, until a second one succeeds', () async {
+    final _Backend backend = _Backend(<String, List<Object>>{
+      '/v1/installations/stepup-key': <Object>[
+        _refusal('reauthentication_failed', 401),
+        <String, dynamic>{'stepup_key_registered': true},
+      ],
+    });
+    final _Store store = _Store();
+    final _DyingStepUpKey key = _DyingStepUpKey();
+    DeviceTrust started() => _trust(
+      backend,
+      store: store,
+      stepUpKey: key,
+      stepUp: const StepUpOptions(),
+    );
+    final DeviceTrust trust = started();
+    await trust.start();
+    await expectLater(
+      trust.reenrolStepUp(
+        session: 'account-session',
+        reauthentication: <String, dynamic>{'password': 'wrong'},
+      ),
+      throwsA(isA<ApiException>()),
+    );
+    // The dead key is gone and the new one not taken: approvals wait.
+    await expectLater(_approve(trust), _reenrolPending);
+    expect(trust.stepUpUnavailable?.code, 'STEPUP_REENROL_PENDING');
+    final DeviceTrust restarted = started();
+    await restarted.start();
+    await expectLater(_approve(restarted), _reenrolPending);
+    expect(
+      await restarted.reenrolStepUp(
+        session: 'account-session',
+        reauthentication: <String, dynamic>{'password': 'pw'},
+      ),
+      containsPair('stepup_key_registered', true),
+    );
+    expect(store.reenrolPending, isFalse);
+    expect(restarted.stepUpUnavailable, isNull);
+    expect(
+      (await _approve(restarted)).headers.keys,
+      contains('X-Step-Up-Proof'),
+    );
+  });
+
+  test('a re-enrolment whose prompt was cancelled, then whose answer was '
+      'lost, is finished by the next one', () async {
+    final _Backend backend = _Backend(<String, List<Object>>{
+      '/v1/installations/stepup-key': <Object>[
+        _refusal('bad_gateway', 502),
+        <String, dynamic>{'stepup_key_registered': true},
+      ],
+    });
+    final _Store store = _Store();
+    final DeviceTrust trust = _trust(
+      backend,
+      store: store,
+      stepUpKey: _CancelledStepUpKey(),
+      stepUp: const StepUpOptions(),
+    );
+    await trust.start();
+    Future<Map<String, dynamic>> reenrol() => trust.reenrolStepUp(
+      session: 'account-session',
+      reauthentication: <String, dynamic>{'password': 'pw'},
+    );
+    await expectLater(
+      reenrol(),
+      throwsA(
+        isA<NativeKeyException>().having(
+          (NativeKeyException e) => e.code,
+          'code',
+          'STEPUP_CANCELLED',
+        ),
+      ),
+    );
+    await expectLater(_approve(trust), _reenrolPending);
+    await expectLater(reenrol(), throwsA(isA<ApiException>()));
+    await expectLater(_approve(trust), _reenrolPending);
+    expect(store.reenrolPending, isTrue);
+    expect(await reenrol(), containsPair('stepup_key_registered', true));
+    expect(store.reenrolPending, isFalse);
+    expect((await _approve(trust)).headers.keys, contains('X-Step-Up-Proof'));
   });
 
   test('re-enrolment with step-up off refuses before sending', () async {

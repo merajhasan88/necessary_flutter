@@ -14,6 +14,8 @@ class InstallationStore {
       _storage = storage ?? const FlutterSecureStorage();
 
   static const String _installationIdKey = 'recognition.installation_id.v2';
+  static const String _stepUpReenrolKey =
+      'recognition.stepup_reenrol_pending.v1';
 
   static const IOSOptions _iosOptions = IOSOptions(
     accessibility: KeychainAccessibility.first_unlock_this_device,
@@ -56,10 +58,25 @@ class InstallationStore {
     );
   }
 
+  /// Whether a step-up key was replaced and the backend has not yet taken
+  /// the new one (DeviceTrust.reenrolStepUp) -- kept across restarts.
+  Future<bool> stepUpReenrolPending() async =>
+      await _storage.read(key: _stepUpReenrolKey, iOptions: _iosOptions) !=
+      null;
+
+  Future<void> setStepUpReenrolPending(bool pending) => pending
+      ? _storage.write(
+          key: _stepUpReenrolKey,
+          value: '1',
+          iOptions: _iosOptions,
+        )
+      : _storage.delete(key: _stepUpReenrolKey, iOptions: _iosOptions);
+
   /// Deletes the key and the installation ID: the next start is a new
   /// installation.
   Future<void> clear() async {
     await key.deleteKey();
     await _storage.delete(key: _installationIdKey, iOptions: _iosOptions);
+    await _storage.delete(key: _stepUpReenrolKey, iOptions: _iosOptions);
   }
 }

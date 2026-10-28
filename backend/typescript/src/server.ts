@@ -94,6 +94,167 @@ class Refusal extends Error {
   }
 }
 
+// --- The contract's rules (RULES.md): what a report's measurements are worth before any business
+// logic weighs them -- never a score. A report is judged over the measurements its challenge
+// required: complete, partial (part of the app's code compared), incomplete (something not measured)
+// or invalid (figures that cannot all be true).
+
+type Quality = "complete" | "partial" | "incomplete" | "invalid";
+const QUALITIES: Quality[] = ["complete", "partial", "incomplete", "invalid"]; // best to worst
+// Where code is always mapped, so that a comparison there finds some (RULES.md 4): on an iPhone only
+// the app's own, the rest being unreadable.
+const REGIONS: Record<string, string[]> = { android: ["core", "ext", "app"], ios: ["app"] };
+const IOS_COVERAGE = ["app_images_expected", "app_images_compared", "app_images_unreadable",
+  "app_images_skipped", "app_expected_bytes", "app_compared_bytes", "app_unreadable_bytes",
+  "app_skipped_bytes", "app_complete", "main_executable_compared"];
+
+type Definitions = Record<string, { "x-complete-when-ok"?: string[]; "x-complete-when-checked"?: string[] }>;
+
+const isObject = (value: unknown): value is JsonObject =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+const absent = (value: unknown): boolean => value === undefined || value === null;
+
+/** The contract's judgment of a report whose shape the schema accepted. Split APKs out of order
+ * (RULES.md 6, the one rule a schema cannot state) are refused rather than read. */
+function judge(report: JsonObject, required: string[], definitions: Definitions): Quality {
+  const platform = report.platform as string;
+  const results = report.probe_results as JsonObject;
+  const identity = results.app_identity;
+  const splits = isObject(identity) ? identity.split_apks : undefined;
+  if (Array.isArray(splits)) {
+    const names = splits.map((entry) => (entry as JsonObject).name as string);
+    // Sorted by name, by code unit as the strings compare, none twice.
+    if (names.some((name, at) => at > 0 && !(names[at - 1] < name))) {
+      throw new Refusal(400, "report_not_accepted", "The report is not the contract's.", { check: "split_apks" });
+    }
+  }
+  const found: Quality[] = ["complete"];
+  for (const name of required) {
+    const value = results[name];
+    const definition = definitions[`${platform}.${name}`] ?? {};
+    if (!isObject(value) || value.status !== "ok") {
+      found.push("incomplete"); // failed or unsupported: not measured (2)
+      continue;
+    }
+    // ok is a claim: a measurement is complete with every field it lists, and with nothing in
+    // unread (2).
+    const unread = value.unread;
+    if ((definition["x-complete-when-ok"] ?? []).some((field) => absent(value[field]))
+      || (isObject(unread) && Object.keys(unread).length > 0)) {
+      found.push("incomplete");
+    }
+    // Failed reads, not clean values (7).
+    if ((["runtime_maps", "exec_mappings"].includes(name) && value.maps_lines === 0)
+      || (name === "instrumentation_threads" && value.thread_count === 0)) {
+      found.push("incomplete");
+    }
+    if (name === "exec_mappings" && wxSizesWithoutMappings(value)) found.push("invalid");
+    if (name === "code_integrity") found.push(codeComparison(platform, value, definition));
+  }
+  // Contradictions across measurements (7).
+  const capture = results.screen_capture;
+  const device = results.device;
+  if (isObject(capture) && capture.status === "ok" && capture.recording_status === "unsupported"
+    && (platform === "ios" || (isObject(device) && isInt(device.sdk_int) && device.sdk_int >= 35))) {
+    found.push("invalid"); // recording unsupported where it is measured
+  }
+  const location = results.location;
+  const mock = results.mock_location;
+  if (isObject(location) && isObject(mock) && location.status === "ok" && mock.status === "ok"
+    && isInt(location.fix_time) && isInt(mock.fix_time) && location.fix_time !== mock.fix_time) {
+    found.push("invalid"); // two fixes presented as one (5)
+  }
+  return found.reduce((worst, quality) =>
+    QUALITIES.indexOf(quality) > QUALITIES.indexOf(worst) ? quality : worst);
+}
+
+/** No writable-and-executable mapping, with the sizes of such mappings listed (RULES.md 7). */
+function wxSizesWithoutMappings(maps: JsonObject): boolean {
+  let classes = 0;
+  for (const part of String(maps.wx_size_classes ?? "").split(",")) {
+    if (!part.trim()) continue;
+    const at = part.indexOf(":");
+    const size = (at < 0 ? part : part.slice(0, at)).trim();
+    const count = (at < 0 ? "" : part.slice(at + 1)).trim();
+    if (!/^[0-9]+$/.test(size) || !/^[0-9]+$/.test(count)) {
+      classes = 0; // not a list of sizes
+      break;
+    }
+    classes += 1;
+  }
+  const extremes = Boolean(maps.wx_smallest_bytes) || Boolean(maps.wx_largest_bytes);
+  return maps.wx_mappings === 0 && !maps.wx_bytes && (classes > 0 || extremes);
+}
+
+/** The comparison of code in memory with its files (RULES.md 4): invalid when its figures do not add
+ * up; incomplete when it did not run, lacks a figure, or compared nothing where code always is;
+ * partial when it compared part of the code. */
+function codeComparison(platform: string, code: JsonObject, definition: Definitions[string]): Quality {
+  if (!(platform === "android" ? androidCoverageAddsUp(code) : iosCoverageAddsUp(code))) return "invalid";
+  if (code.checked !== true || (definition["x-complete-when-checked"] ?? []).some((field) => absent(code[field]))) {
+    return "incomplete";
+  }
+  if (REGIONS[platform].some((region) => code[`${region}_compared_bytes`] === 0)) return "incomplete";
+  if (platform === "ios") return code.app_complete === true ? "complete" : "partial";
+  const short = REGIONS.android.some((region) =>
+    (code[`${region}_compared_bytes`] as number) < (code[`${region}_expected_bytes`] as number));
+  return short || ((code.protect_restore_failures as number | undefined) ?? 0) > 0 ? "partial" : "complete";
+}
+
+/** In each region the expected bytes are the compared, skipped and unreadable ones together, and
+ * <region>_complete is true exactly when some code was expected and all of it was compared. */
+function androidCoverageAddsUp(code: JsonObject): boolean {
+  for (const region of REGIONS.android) {
+    const expected = code[`${region}_expected_bytes`];
+    if (absent(expected)) continue;
+    const parts = ["compared", "skipped", "unreadable"].map((kind) => code[`${region}_${kind}_bytes`]);
+    if (!parts.every(isInt) || (parts as number[]).reduce((a, b) => a + b, 0) !== expected) return false;
+    const complete = code[`${region}_complete`];
+    if (!absent(complete) && complete !== ((expected as number) > 0 && parts[0] === expected)) return false;
+  }
+  return true;
+}
+
+/** Images and bytes both add up -- expected = compared + unreadable + skipped -- and app_complete is
+ * true exactly when every image was compared, the main executable among them; bytes are compared
+ * exactly when images are, and each image not compared is named. A collector that reports only part
+ * of it is judged by its fields instead. */
+function iosCoverageAddsUp(code: JsonObject): boolean {
+  if (IOS_COVERAGE.some((field) => absent(code[field]))) return true;
+  const figures = IOS_COVERAGE.slice(0, 8).map((field) => code[field]);
+  if (!figures.every(isInt)) return false;
+  const [expected, compared, unreadable, skipped, expectedBytes, comparedBytes, unreadableBytes,
+    skippedBytes] = figures as number[];
+  const complete = expected > 0 && compared === expected;
+  const main = code.main_executable_compared;
+  const named = code.app_images_not_compared;
+  const namedCount = isObject(named) ? Object.keys(named).length : 0;
+  return !(
+    expected !== compared + unreadable + skipped
+    || expectedBytes !== comparedBytes + unreadableBytes + skippedBytes
+    || code.app_complete !== complete
+    || (complete && (unreadableBytes > 0 || skippedBytes > 0))
+    || (unreadableBytes > 0 && unreadable === 0) || (skippedBytes > 0 && skipped === 0)
+    || (comparedBytes > 0) !== (compared > 0)
+    || (!absent(code.checked) && code.checked !== (compared > 0))
+    || (main === true && compared === 0) || (complete && main !== true)
+    || (!absent(named) && (namedCount > unreadable + skipped || (unreadable + skipped > 0 && namedCount === 0))));
+}
+
+// Your business logic decides (the guide, section 7), and this is where it goes. This sample decides
+// on the contract's judgment alone and scores nothing: a complete report lets the action go on, and
+// so -- by this sample's choice -- does a partial one, whose comparison found nothing in the code it
+// could read; an incomplete one asks for a scan again, since a failed read is no proof of an attack;
+// and a report whose figures contradict each other is held for review. Only a report allowed here
+// approves a scan made for one action.
+const NEXT: Record<Quality, string> = { complete: "allow", partial: "allow", incomplete: "scan_again", invalid: "review" };
+
+/** What to do next, for this report: allow, scan_again or review. */
+function decide(judgment: Quality, report: JsonObject): string {
+  void report; // your own rules read the measurements here
+  return NEXT[judgment];
+}
+
 // --- Section 1: the installation key.
 
 function publicKey(jwk: unknown): crypto.KeyObject {
@@ -149,6 +310,8 @@ interface Account {
   passwordSalt: Buffer; passwordVerifier: Buffer;
   pinSalt: Buffer | null; pinVerifier: Buffer | null;
   pinFailures: number; pinLocked: boolean; pinChecking: number;
+  // Each PIN set is a new generation; a check settles against the one it compared.
+  pinGeneration: number;
 }
 
 class Request {
@@ -198,12 +361,16 @@ class Backend {
   }>();
   private readonly reports = new Map<string, {
     installationId: string; at: number; used: boolean; operationSha256: string | null;
-    session: string | null;
+    session: string | null; judgment: Quality; next: string;
   }>();
   private readonly accounts = new Map<string, Account>();
   readonly pending = new Map<string, JsonObject>(); // test control: the next request's refusal
+  // Test control: while set, PIN checks wait on it; released with fail, their verifier fails.
+  private pinGate: { released: Promise<boolean>; release: (fail: boolean) => void } | null = null;
+  private pinWaiting = 0; // test control: the PIN checks waiting now
 
   constructor(private readonly validate: ReturnType<Ajv2020["compile"]>,
+    private readonly definitions: Definitions, // the contract's x- annotations
     readonly testToken: string | null) {} // test controls answer only this token
 
   // --- Section 1: registration.
@@ -472,18 +639,25 @@ class Backend {
     // 10. Used; one event loop makes the checks and the marking one unit.
     challenge.used = true;
     // Only then are the measurements read: first, whether they are the contract's.
+    this.checkShape(report);
+    // Then what they are worth, by the contract's rules; then the decision.
+    const judgment = judge(report, challenge.required, this.definitions);
+    const decision = decide(judgment, report);
+    const reportId = crypto.randomUUID();
+    this.reports.set(reportId, {
+      installationId: session.installationId, at: now(), used: false,
+      operationSha256: challenge.operationSha256, session: challenge.session, judgment, next: decision,
+    });
+    // The answer says what to do next, never the judgment, a score or a reason (section 7).
+    return { integrity: { report_id: reportId, next: decision } };
+  }
+
+  /** The report against the contract's schema: its shape. */
+  checkShape(report: JsonObject): void {
     if (!this.validate(report)) {
       throw new Refusal(400, "report_not_accepted", "The report is not the contract's.",
         { check: "schema", at: this.validate.errors?.[0]?.instancePath ?? "" });
     }
-    const reportId = crypto.randomUUID();
-    this.reports.set(reportId, {
-      installationId: session.installationId, at: now(), used: false,
-      operationSha256: challenge.operationSha256, session: challenge.session,
-    });
-    // Your business logic decides; the answer says what to do next, never a
-    // score or a reason (section 7).
-    return { integrity: { report_id: reportId, next: "allow" } };
   }
 
   // --- Section 2: a scan for one action, used by the request it named.
@@ -493,8 +667,10 @@ class Backend {
     const here = sha256Hex(canonical({
       method: request.method, path: request.path, query: request.query, body_sha256: sha256Hex(request.body),
     }));
+    // A scan made for this request, under this session, lately -- and one the decision allowed.
     if (stored === undefined || stored.used || stored.operationSha256 !== here
-      || stored.session !== request.bearer || now() - stored.at > OPERATION_SCAN_SECONDS) {
+      || stored.session !== request.bearer || now() - stored.at > OPERATION_SCAN_SECONDS
+      || stored.next !== "allow") {
       throw new Refusal(403, "needs_scan", "This request needs a scan made for it.");
     }
     stored.used = true;
@@ -588,8 +764,12 @@ class Backend {
       throw new Refusal(400, "bad_request", `The PIN is ${PIN_LENGTH} digits.`, { field: "pin" });
     }
     const [salt, verifier] = await slowVerifier(this.pinSecret, session.account as string, pin);
-    // A new PIN clears the wrong ones and any lock.
-    Object.assign(account, { pinSalt: salt, pinVerifier: verifier, pinFailures: 0, pinLocked: false });
+    // A new PIN clears the wrong ones and any lock, and is a new generation: checks of the PIN it
+    // replaces settle against that one, and the proofs made under it no longer serve.
+    Object.assign(account, {
+      pinSalt: salt, pinVerifier: verifier, pinFailures: 0, pinLocked: false, pinChecking: 0,
+      pinGeneration: account.pinGeneration + 1,
+    });
     return { app_pin_set: true };
   }
 
@@ -618,18 +798,35 @@ class Backend {
         { retry_after_seconds: 1 });
     }
     account.pinChecking += 1; // the attempt, claimed before comparing
+    const generation = account.pinGeneration;
+    const salt = account.pinSalt;
     const verifier = account.pinVerifier;
-    let right: boolean;
+    let right: boolean | null;
     try {
-      right = same((await slowVerifier(this.pinSecret, session.account as string, pin as string, account.pinSalt))[1], verifier);
-    } finally {
-      account.pinChecking -= 1;
+      await this.heldPinCheck();
+      right = same((await slowVerifier(this.pinSecret, session.account as string, pin as string, salt))[1], verifier);
+    } catch {
+      right = null; // the check could not run
     }
-    if (right) {
-      account.pinFailures = 0;
-    } else {
-      account.pinFailures += 1;
-      account.pinLocked = account.pinFailures >= PIN_ATTEMPTS;
+    // Settled in one step -- nothing awaited from here on -- against the PIN it compared: a PIN set
+    // meanwhile is left alone -- its count, its lock, its checks -- and a check that could not run
+    // gives its attempt back.
+    const current = account.pinGeneration === generation;
+    if (current) {
+      account.pinChecking -= 1;
+      if (right === true) {
+        account.pinFailures = 0;
+      } else if (right === false) {
+        account.pinFailures += 1;
+        account.pinLocked = account.pinFailures >= PIN_ATTEMPTS;
+      }
+    }
+    if (right === null) throw new Refusal(503, "pin_unavailable", "The app PIN cannot be checked now; try again.");
+    if (!current) {
+      // Neither a proof nor a count: the PIN it was right or wrong for is no longer the account's.
+      throw new Refusal(403, "app_pin_invalid", "The app PIN was changed while it was checked; enter it again.");
+    }
+    if (!right) {
       if (account.pinLocked) throw new Refusal(403, "app_pin_locked", "The app PIN is locked; set a new one.");
       throw new Refusal(403, "app_pin_invalid", "The app PIN is wrong.");
     }
@@ -637,6 +834,7 @@ class Backend {
     const claims = canonical({
       account: session.account as string, installation_id: session.installationId,
       session_sha256: sha256Hex(request.bearer as string), request: target, expires_at: expires,
+      pin_generation: generation,
     });
     return {
       app_pin_proof: `${b64urlEncode(claims)}.${b64urlEncode(hmac(this.pinProofKey, claims))}`,
@@ -652,6 +850,10 @@ class Backend {
       if (same(b64urlDecode(mac), hmac(this.pinProofKey, claims))) proof = JSON.parse(claims.toString("utf8"));
     } catch { /* not a proof of ours */ }
     if (proof === null) throw new Refusal(403, "needs_app_pin", "This request needs the app PIN.");
+    const generation = (this.accounts.get(session.account as string) as Account).pinGeneration;
+    if (proof.pin_generation !== generation) {
+      throw new Refusal(403, "app_pin_not_accepted", "The app PIN was changed since this proof was made; enter it again.");
+    }
     const expected = canonical({
       account: session.account as string, installation_id: session.installationId,
       session_sha256: sha256Hex(request.bearer as string),
@@ -659,6 +861,7 @@ class Backend {
         method: request.method, path: request.path, query: request.query,
         body_sha256: sha256Hex(request.body), nonce,
       },
+      pin_generation: generation,
     });
     const { expires_at: expires, ...bound } = proof;
     if (!isInt(expires) || expires < now() || !canonical(bound).equals(expected)) {
@@ -680,7 +883,7 @@ class Backend {
       const [salt, verifier] = await slowVerifier(this.passwordSecret, handle, password);
       account = this.accounts.get(handle) ?? {
         passwordSalt: salt, passwordVerifier: verifier, pinSalt: null, pinVerifier: null,
-        pinFailures: 0, pinLocked: false, pinChecking: 0,
+        pinFailures: 0, pinLocked: false, pinChecking: 0, pinGeneration: 0,
       };
       this.accounts.set(handle, account);
     }
@@ -720,6 +923,17 @@ class Backend {
 
   // --- Test controls, on only with --test-controls.
 
+  /** A PIN check waits here, its attempt claimed, while a test holds PIN checks; released with fail,
+   * its verifier fails. */
+  private async heldPinCheck(): Promise<void> {
+    const gate = this.pinGate;
+    if (gate === null) return;
+    this.pinWaiting += 1;
+    const fail = await gate.released;
+    this.pinWaiting -= 1;
+    if (fail) throw new Error("the verifier failed, for a test");
+  }
+
   control(path: string, body: JsonObject): JsonObject {
     if (path === "/test/expire-sessions") {
       for (const session of this.sessions.values()) session.expires = now() - 1;
@@ -731,6 +945,28 @@ class Backend {
       }
     } else if (path === "/test/refuse-next") {
       this.pending.set(body.path as string, body);
+    } else if (path === "/test/judge") {
+      // The contract's judgment of a report under a plan of the test's own, as the report call would
+      // make it.
+      try {
+        this.checkShape(body.report as JsonObject);
+        return { judged: judge(body.report as JsonObject, body.required_probes as string[], this.definitions) };
+      } catch (error) {
+        if (!(error instanceof Refusal)) throw error;
+        return { judged: "refused" };
+      }
+    } else if (path === "/test/pin-checks") {
+      // Hold PIN checks once they claim their attempt, or release those waiting; the answer counts
+      // those waiting.
+      if (body.hold === true && this.pinGate === null) {
+        let release: (fail: boolean) => void = () => undefined;
+        const released = new Promise<boolean>((resolve) => { release = resolve; });
+        this.pinGate = { released, release };
+      } else if (body.hold === false && this.pinGate !== null) {
+        this.pinGate.release(body.fail === true);
+        this.pinGate = null;
+      }
+      return { ok: true, waiting: this.pinWaiting };
     } else {
       throw new Refusal(404, "no_such_path", "No such control.");
     }
@@ -822,7 +1058,8 @@ function main(): void {
   }
   // The contract's own keywords (x-*) annotate; they constrain nothing.
   const ajv = new Ajv2020({ strict: false });
-  const backend = new Backend(ajv.compile(JSON.parse(fs.readFileSync(schemaPath, "utf8"))), testToken);
+  const schema = JSON.parse(fs.readFileSync(schemaPath, "utf8"));
+  const backend = new Backend(ajv.compile(schema), schema.$defs ?? {}, testToken);
   const server = http.createServer((incoming, response) => {
     const chunks: Buffer[] = [];
     let size = 0;

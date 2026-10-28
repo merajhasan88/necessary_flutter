@@ -137,10 +137,19 @@ class DeviceTrust {
   String? _session;
 
   // One call of each kind in flight; a second waits for the first's result.
+  Future<InstallationIdentity>? _loading;
   Future<InstallationIdentity>? _starting;
   Future<String>? _proving;
   final Map<String, Future<ScanResult>> _scanning =
       <String, Future<ScanResult>>{};
+
+  // Which installation the calls running now belong to: reset() and close()
+  // move on to the next, and a call of an earlier one keeps nothing it finds.
+  int _generation = 0;
+  // A reset's deletion, which every later load waits for; and the
+  // installation ID being saved, which a reset waits for.
+  Future<void>? _resetting;
+  Future<void>? _saving;
   StepUpKeyMetadata? _offeredStepUpKey;
   ReinstallHint? _hint;
   bool _hintRead = false;
@@ -165,43 +174,133 @@ class DeviceTrust {
 
   /// The installation: its key, made on first use, and its ID. A key made
   /// now is a new installation ([InstallationIdentity.createdThisLaunch]):
-  /// whatever the app kept for the one before belongs to that one.
-  Future<InstallationIdentity> loadIdentity() async =>
-      _identity ??= await _store.loadOrCreate();
+  /// whatever the app kept for the one before belongs to that one. Calls at
+  /// once share one load, so one key gets one ID.
+  Future<InstallationIdentity> loadIdentity() {
+    final InstallationIdentity? known = _identity;
+    if (known != null) {
+      return Future<InstallationIdentity>.value(known);
+    }
+    final Future<InstallationIdentity>? running = _loading;
+    if (running != null) {
+      return running;
+    }
+    late final Future<InstallationIdentity> loading;
+    loading = _load().whenComplete(() {
+      if (identical(_loading, loading)) {
+        _loading = null;
+      }
+    });
+    return _loading = loading;
+  }
+
+  Future<InstallationIdentity> _load() async {
+    // A reset's deletion first, so that nothing loads the key it deletes.
+    await _resetting;
+    final int generation = _generation;
+    final InstallationIdentity loaded = await _store.loadOrCreate();
+    _current(generation);
+    return _identity ??= loaded;
+  }
+
+  /// Throws when reset() or close() ended the installation [generation]
+  /// belongs to: a call keeps nothing of one that is gone.
+  void _current(int generation) {
+    if (generation != _generation) {
+      throw InterruptedCallException(
+        'The installation was reset, or the client closed, while this call '
+        'ran: nothing it found was kept.',
+      );
+    }
+  }
 
   /// Loads or makes the key, registers it -- with the step-up key, when
   /// step-up is on -- and proves the installation holds it: the
   /// installation session. A refusal outside the guide's protocol errors
   /// goes to the app as it came. A second call while one runs gets its
   /// result.
-  Future<InstallationIdentity> start() =>
-      _starting ??= _start().whenComplete(() => _starting = null);
+  Future<InstallationIdentity> start() {
+    final Future<InstallationIdentity>? running = _starting;
+    if (running != null) {
+      return running;
+    }
+    late final Future<InstallationIdentity> starting;
+    starting = _start().whenComplete(() {
+      if (identical(_starting, starting)) {
+        _starting = null;
+      }
+    });
+    return _starting = starting;
+  }
 
   Future<InstallationIdentity> _start() async {
+    final int generation = _generation;
     await loadIdentity();
-    await _register();
+    await _register(generation);
     await prove();
+    _current(generation);
     return _identity!;
   }
 
   /// A new installation session: the key's challenge, answered. A second
   /// call while one runs gets its result.
-  Future<String> prove() =>
-      _proving ??= _prove(retried: false).whenComplete(() => _proving = null);
+  Future<String> prove() {
+    final Future<String>? running = _proving;
+    if (running != null) {
+      return running;
+    }
+    late final Future<String> proving;
+    proving = _prove(_generation, retried: false).whenComplete(() {
+      if (identical(_proving, proving)) {
+        _proving = null;
+      }
+    });
+    return _proving = proving;
+  }
 
   /// Deletes the key and the installation ID (InstallationStore.clear) and
-  /// forgets the session: the next start is a new installation.
-  Future<void> reset() async {
-    await _store.clear();
-    _identity = null;
-    _session = null;
+  /// forgets the session: the next start is a new installation. Calls still
+  /// running end with InterruptedCallException and keep nothing; calls made
+  /// from now on wait for the deletion, and never join one made before.
+  Future<void> reset() {
+    final Future<InstallationIdentity>? loading = _loading;
+    final Future<void>? saving = _saving;
+    final Future<void>? earlier = _resetting;
+    _endCalls();
     _offeredStepUpKey = null;
     _hint = null;
     _hintRead = false;
+    final Future<void> deleting = () async {
+      await earlier;
+      // A load or a save still running finishes first, so that nothing it
+      // writes outlives the deletion.
+      await Future.wait(<Future<void>>[
+        if (loading != null) loading.then<void>((_) {}, onError: (_) {}),
+        if (saving != null) saving.then<void>((_) {}, onError: (_) {}),
+      ]);
+      await _store.clear();
+    }();
+    // Later loads wait for the deletion, whatever came of it; the caller of
+    // reset hears what did.
+    _resetting = deleting.then<void>((_) {}, onError: (_) {});
+    return deleting;
   }
 
-  Future<String> _prove({required bool retried}) async {
+  /// Moves on to the next installation: the calls running now keep nothing,
+  /// and the next ones start afresh.
+  void _endCalls() {
+    _generation++;
+    _identity = null;
+    _session = null;
+    _loading = null;
+    _starting = null;
+    _proving = null;
+    _scanning.clear();
+  }
+
+  Future<String> _prove(int generation, {required bool retried}) async {
     final InstallationIdentity identity = await loadIdentity();
+    _current(generation);
     try {
       final Map<String, dynamic> challenge = await client
           .createInstallationChallenge(identity.installationId);
@@ -212,6 +311,7 @@ class DeviceTrust {
         payload: payload,
         signature: await identity.signPayload(payload),
       );
+      _current(generation);
       return _session = verified['device_token'] as String;
     } on ApiException catch (error) {
       if (retried) {
@@ -221,58 +321,82 @@ class DeviceTrust {
         case ProtocolStep.askAgain:
           break;
         case ProtocolStep.registerAgain:
-          await _register();
+          await _register(generation);
         case ProtocolStep.waitThenRetry:
           await Future<void>.delayed(protocolWait(error)!);
         case ProtocolStep.proveAgain:
         case ProtocolStep.stop:
           rethrow;
       }
-      return _prove(retried: true);
+      return _prove(generation, retried: true);
     }
   }
 
-  Future<void> _register() async {
+  Future<void> _register(int generation) async {
     final InstallationIdentity identity = await loadIdentity();
+    _current(generation);
     if (!_hintRead) {
-      _hint = await _hintReader.read();
+      final ReinstallHint? hint = await _hintReader.read();
+      _current(generation);
+      _hint = hint;
       _hintRead = true;
     }
     final Map<String, dynamic> answer = await client.registerInstallation(
       identity,
       _hint,
-      stepUpKey: await _prepareStepUpKey(),
+      stepUpKey: await _prepareStepUpKey(generation),
     );
+    _current(generation);
     // The key is the installation's identity: a backend that holds it under
     // another ID answers with that one, which is kept.
     final Object? held = answer['installation_id'];
     if (held is String && held.isNotEmpty && held != identity.installationId) {
       _identity = identity.withInstallationId(held);
-      await _store.saveInstallationId(held);
+      final Future<void> saving = _store.saveInstallationId(held);
+      _saving = saving;
+      await saving;
     }
     await onRegistered?.call(answer);
   }
 
   /// The step-up key as [stepUp] asks: an existing key is kept as it is.
   /// Step-up is optional, so a key the phone cannot make leaves it off.
-  Future<StepUpKeyMetadata?> _prepareStepUpKey() async {
+  Future<StepUpKeyMetadata?> _prepareStepUpKey(int generation) async {
     final StepUpOptions? options = stepUp;
-    stepUpUnavailable = null;
     if (options == null) {
+      stepUpUnavailable = null;
       return _offeredStepUpKey = null;
     }
     _stepUpKey.configuredMode = options.mode;
+    StepUpKeyMetadata? key;
+    NativeKeyException? unavailable;
     try {
-      return _offeredStepUpKey = await _stepUpKey.getOrCreateKey(
+      key = await _stepUpKey.getOrCreateKey(
         factor: options.factor,
         mode: options.mode,
         windowSeconds: options.windowSeconds,
       );
     } on NativeKeyException catch (error) {
-      stepUpUnavailable = error;
-      return _offeredStepUpKey = null;
+      unavailable = error;
     }
+    // A re-enrolment left unfinished -- the person cancelled, the backend
+    // refused, its answer was lost: the backend still holds the key this one
+    // replaced, so approvals wait for reenrolStepUp, even across a restart.
+    if (key != null && await _store.stepUpReenrolPending()) {
+      key = null;
+      unavailable = _reenrolPending();
+    }
+    _current(generation);
+    stepUpUnavailable = unavailable;
+    return _offeredStepUpKey = key;
   }
+
+  /// What approvals answer while a re-enrolment is unfinished.
+  static NativeKeyException _reenrolPending() => NativeKeyException(
+    'STEPUP_REENROL_PENDING',
+    'The step-up key was replaced, and the backend has not taken the new one '
+        'yet: reenrolStepUp() again.',
+  );
 
   /// A scan: under the installation session -- or, for a scan that approves
   /// one [operation] ([describeOperation]), under the app's account
@@ -289,20 +413,31 @@ class DeviceTrust {
             'will send it',
       );
     }
-    final String kind = jsonEncode(<Object?>[session, operation]);
-    // A block, not an arrow: remove() answers the very future whenComplete
-    // would then wait for.
-    return _scanning[kind] ??= _scan(session, operation).whenComplete(() {
-      _scanning.remove(kind);
+    // The personal measurements enabled now are part of the scan: one asked
+    // for after the person changed them never joins one asked for before.
+    final List<String> enabled = enabledMeasurements;
+    final String kind = jsonEncode(<Object?>[session, operation, enabled]);
+    final Future<ScanResult>? running = _scanning[kind];
+    if (running != null) {
+      return running;
+    }
+    late final Future<ScanResult> scanning;
+    scanning = _scan(_generation, session, operation, enabled).whenComplete(() {
+      if (identical(_scanning[kind], scanning)) {
+        _scanning.remove(kind);
+      }
     });
+    return _scanning[kind] = scanning;
   }
 
   Future<ScanResult> _scan(
+    int generation,
     String? session,
     Map<String, dynamic>? operation,
+    List<String> enabled,
   ) async {
     try {
-      return await _scanOnce(session, operation);
+      return await _scanOnce(generation, session, operation, enabled);
     } on ApiException catch (error) {
       final bool installationSession = session == null;
       switch (protocolStepFor(error, deviceSession: installationSession)) {
@@ -316,23 +451,26 @@ class DeviceTrust {
           if (!installationSession) {
             rethrow;
           }
-          await _register();
+          await _register(generation);
           await prove();
         case ProtocolStep.waitThenRetry:
           await Future<void>.delayed(protocolWait(error)!);
         case ProtocolStep.stop:
           rethrow;
       }
-      return _scanOnce(session, operation);
+      return _scanOnce(generation, session, operation, enabled);
     }
   }
 
   Future<ScanResult> _scanOnce(
+    int generation,
     String? session,
     Map<String, dynamic>? operation,
+    List<String> enabled,
   ) async {
     final InstallationIdentity identity = await loadIdentity();
     final String bearer = session ?? _session ?? await prove();
+    _current(generation);
     final ScanChallenge challenge = await client.integrityChallenge(
       session: bearer,
       identity: identity,
@@ -342,17 +480,17 @@ class DeviceTrust {
       challenge: challenge,
       identity: identity,
       collector: _collector,
-      enabledMeasurements: enabledMeasurements,
+      enabledMeasurements: enabled,
     );
-    return ScanResult(
-      challenge: challenge,
+    // A report of an installation reset meanwhile is never sent.
+    _current(generation);
+    final Map<String, dynamic> answer = await client.submitIntegrityReport(
+      session: bearer,
+      identity: identity,
       report: report,
-      answer: await client.submitIntegrityReport(
-        session: bearer,
-        identity: identity,
-        report: report,
-      ),
     );
+    _current(generation);
+    return ScanResult(challenge: challenge, report: report, answer: answer);
   }
 
   /// Signs one request to your backend under [bearer], your account session:
@@ -424,7 +562,11 @@ class DeviceTrust {
   /// -- the screen lock removed (`STEPUP_KEY_INVALIDATED`) -- or one made for
   /// other options: the person unlocks the new key to sign its proof, the
   /// phone showing [reason], and the backend takes it for that account alone
-  /// (the public guide, section 3). Approvals use it from then on.
+  /// (the public guide, section 3). Approvals use it from then on. A key
+  /// replaced before the backend took the new one -- the person cancelled,
+  /// the password was wrong, the answer was lost -- leaves step-up waiting:
+  /// approvals answer `STEPUP_REENROL_PENDING`, across restarts too, until a
+  /// call of this succeeds.
   Future<Map<String, dynamic>> reenrolStepUp({
     required String session,
     Map<String, dynamic> reauthentication = const <String, dynamic>{},
@@ -437,10 +579,18 @@ class DeviceTrust {
         'Step-up is off: DeviceTrust(stepUp: StepUpOptions(...)).',
       );
     }
+    final int generation = _generation;
     final InstallationIdentity identity = await loadIdentity();
+    _current(generation);
     _stepUpKey.configuredMode = options.mode;
     Future<StepUpKeyMetadata> newKey({required bool replace}) async {
       if (replace) {
+        // From here the phone's key and the backend's differ until the
+        // backend takes the new one: approvals wait for that.
+        await _store.setStepUpReenrolPending(true);
+        _current(generation);
+        _offeredStepUpKey = null;
+        stepUpUnavailable = _reenrolPending();
         await _stepUpKey.deleteKey();
       }
       return _stepUpKey.getOrCreateKey(
@@ -496,6 +646,9 @@ class DeviceTrust {
       nonce: nonce,
     );
     final Map<String, dynamic> answer = await send(proof);
+    _current(generation);
+    await _store.setStepUpReenrolPending(false);
+    _current(generation);
     _offeredStepUpKey = key;
     stepUpUnavailable = null;
     return answer;
@@ -534,5 +687,11 @@ class DeviceTrust {
   Future<String> requestLocationPermission() =>
       _collector.requestLocationPermission();
 
-  void close() => client.close();
+  /// Closes the transport. Calls still running end with
+  /// InterruptedCallException, or with the transport's own failure, and keep
+  /// nothing; the key and the installation stay as they are.
+  void close() {
+    _endCalls();
+    client.close();
+  }
 }

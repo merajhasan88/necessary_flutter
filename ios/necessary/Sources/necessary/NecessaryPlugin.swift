@@ -21,12 +21,25 @@ public class NecessaryPlugin: NSObject, FlutterPlugin, CLLocationManagerDelegate
     private var locationManager: CLLocationManager?
     private var pendingLocationResult: FlutterResult?
     /// While the app PIN is typed: iOS lets no app block
-    /// screenshots, so the window is covered whenever the screen is recorded,
-    /// mirrored or sent to AirPlay.
+    /// screenshots, so the windows the person sees are covered whenever the
+    /// screen is recorded, mirrored or sent to AirPlay.
     private var screenProtected = false
     /// Callers holding the protection: it lasts until the last one is done.
     private var screenHolders = 0
-    private var captureCover: UIView?
+    /// The covers in place now, one per window covered.
+    private var captureCovers: [UIView] = []
+    /// What moves the covers: the capture starting or stopping, and a window
+    /// or a scene coming or going -- so that a cover follows the window the
+    /// person sees when that window is replaced, or appears only later.
+    private static let coverEvents: [Notification.Name] = [
+        UIScreen.capturedDidChangeNotification,
+        UIWindow.didBecomeKeyNotification,
+        UIWindow.didBecomeVisibleNotification,
+        UIWindow.didBecomeHiddenNotification,
+        UIScene.willEnterForegroundNotification,
+        UIScene.didActivateNotification,
+        UIScene.didDisconnectNotification,
+    ]
     private let worker = DispatchQueue(label: "necessary.native", qos: .userInitiated)
 
     init(bundleIdentifier: String) {
@@ -149,42 +162,50 @@ public class NecessaryPlugin: NSObject, FlutterPlugin, CLLocationManagerDelegate
         }
     }
 
+    /// The engine goes: the protection, its observers and its covers with it.
+    public func detachFromEngine(for registrar: FlutterPluginRegistrar) {
+        screenHolders = 0
+        setScreenProtection(false)
+    }
+
     private func setScreenProtection(_ on: Bool) {
         screenProtected = on
-        NotificationCenter.default.removeObserver(
-            self, name: UIScreen.capturedDidChangeNotification, object: nil)
-        if on {
-            NotificationCenter.default.addObserver(
-                self, selector: #selector(screenCaptureChanged),
-                name: UIScreen.capturedDidChangeNotification, object: nil)
+        for name in NecessaryPlugin.coverEvents {
+            NotificationCenter.default.removeObserver(self, name: name, object: nil)
+            if on {
+                NotificationCenter.default.addObserver(
+                    self, selector: #selector(coverEvent(_:)), name: name, object: nil)
+            }
         }
-        updateCaptureCover()
+        updateCaptureCovers()
     }
 
-    @objc private func screenCaptureChanged() {
-        updateCaptureCover()
+    @objc private func coverEvent(_ notification: Notification) {
+        updateCaptureCovers()
     }
 
-    private func updateCaptureCover() {
-        let cover = screenProtected && UIScreen.main.isCaptured
-        if !cover {
-            captureCover?.removeFromSuperview()
-            captureCover = nil
-            return
+    /// Covers, in each of the app's scenes whose screen is captured, the
+    /// window the person sees -- its key window, or else its first visible
+    /// window at the normal level -- and nothing else. The covers are made
+    /// again at every change, so that none stays on a window replaced and
+    /// none is missing from a window that appeared after the protection began.
+    private func updateCaptureCovers() {
+        for cover in captureCovers {
+            cover.removeFromSuperview()
         }
-        guard captureCover == nil, let window = activeWindow() else { return }
-        let view = UIView(frame: window.bounds)
-        view.backgroundColor = .black
-        view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        window.addSubview(view)
-        captureCover = view
-    }
-
-    private func activeWindow() -> UIWindow? {
-        return UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap { $0.windows }
-            .first { $0.isKeyWindow }
+        captureCovers = []
+        guard screenProtected else { return }
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        for scene in scenes where scene.screen.isCaptured {
+            guard let window = scene.windows.first(where: { $0.isKeyWindow })
+                ?? scene.windows.first(where: { !$0.isHidden && $0.windowLevel == .normal })
+            else { continue }
+            let view = UIView(frame: window.bounds)
+            view.backgroundColor = .black
+            view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            window.addSubview(view)
+            captureCovers.append(view)
+        }
     }
 
     private func locationState(_ manager: CLLocationManager) -> String {

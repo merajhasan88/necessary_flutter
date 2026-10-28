@@ -1,14 +1,16 @@
 # necessary
 
-Device trust for Flutter apps on Android and iOS. The plugin gives your app a key that cannot leave the
-phone, signed measurements of the phone and of the app running on it, and a proof on each request your
-app sends — and, if you turn them on, a second key the person must unlock to approve a request, and a
+Device trust for Flutter apps on Android and iOS. The plugin gives your app a key it never exports — made
+in the phone's keystore, in secure hardware where the phone has it and in software where it does not —
+signed measurements of the phone and of the app running on it, and a proof on each request your app
+sends — and, if you turn them on, a second key the person must unlock to approve a request, and a
 PIN your backend checks. **It never scores and never decides: your backend does.** The integration guide
 (`doc/integration_guide.md`) is the protocol: what the plugin sends and how your backend checks it.
 The example app (`example/`) puts every piece below in a working app, against the sample backends in
 `backend/`; its README walks through testing it on a phone, step by step.
 
-Android 7.0 (API 24) and later; iOS 15 and later. Status: 0.1.0, not yet published.
+Android 7.0 (API 24) and later; iOS 15 and later; Flutter 3.44 (Dart 3.12) and later — the example app
+needs Flutter 3.47. Status: 0.1.0, not yet published.
 
 ## Install
 
@@ -174,7 +176,9 @@ await trust.reenrolStepUp(
 
 A new key is made, the person unlocks it to sign its proof, and your backend takes it for that account
 alone; approvals use it from then on. The call goes to `/v1/installations/stepup-key`, or to your API's
-own path: `StepUpOptions(reenrolPath: ...)`.
+own path: `StepUpOptions(reenrolPath: ...)`. Until your backend has taken the new key — the person
+cancelled the prompt, the password was wrong, the answer was lost — approvals fail with
+`STEPUP_REENROL_PENDING`, across restarts too: call `reenrolStepUp` again.
 
 ## The app PIN: the person's PIN for one request
 
@@ -226,8 +230,10 @@ Step-up and the app PIN combine: your backend decides which requests need which.
 | The key is lost — an Android reinstall, a cleared keystore | `start()` makes a new key and a new installation ID; `trust.identity!.createdThisLaunch` is true, so forget what you kept for the old installation. Your backend links the two only provisionally, by the reinstall hint |
 | iOS keeps the key across a reinstall | with its ID, the same installation comes back; without it, the plugin proposes a new ID, your backend answers with the one it holds for the key, and the plugin keeps that one |
 | The app's process restarts | nothing is kept in memory: `start()` again finds the same key and installation, and proves it for a new installation session |
-| The activity or scene is recreated | screen protection stays on the new window; a step-up prompt the recreation cancelled answers `STEPUP_CANCELLED`: ask again |
-| Two calls at once | `start()`, `prove()` and the same `scan()` run once, and the second caller gets the first's result; scans for different operations run apart |
+| The activity, a scene or a window is replaced | screen protection follows: Android sets it on each new window; on iOS the cover is placed again, on the window the person sees in each scene, whenever a window becomes key, visible or hidden or a scene comes to the foreground — and protection asked for before any window exists covers the first one. A step-up prompt the recreation cancelled answers `STEPUP_CANCELLED`: ask again |
+| The Flutter engine is torn down | iOS drops the protection, its covers and its observers with the engine |
+| Two calls at once | `start()`, `prove()`, `loadIdentity()` and the same `scan()` run once, and the second caller gets the first's result; scans for different operations, or asked after the personal measurements changed, run apart |
+| `reset()` or `close()` while calls run | the calls end with `InterruptedCallException` and keep nothing — no session, no installation ID, no report sent; after a reset, new calls wait for the deletion and never join one made before |
 | A call abandoned, or its answer lost | a scan is simply asked for again — a challenge serves once; the plugin never sends a signed request twice: sign it again, and let your backend decide whether the first one reached it |
 | A report over 65,536 bytes | it is never sent: the app lists the contract lets a collector shorten are shortened, and say `truncated`; anything else answers an `ApiException` `report_too_large` |
 
@@ -246,8 +252,20 @@ guide's checks in your backend.
 
 It never scores, decides, or tells your app a score; never stores your account session; never sends the
 PIN in a header; and uses no platform attestation (Play Integrity, SafetyNet, App Attest, DeviceCheck).
-A fully compromised phone can falsify what it measures and can use a genuine key to sign what it likes:
-the measurements raise the cost of fraud, and your backend weighs them with its own business logic.
+It never exports a private key, but it cannot prove to your backend where a key is kept: the
+registration's `key_security` is the phone's own word, and where the secure hardware declines — the iOS
+Simulator, some configurations — the key is a software key, which a compromised phone can copy. A fully
+compromised phone can falsify what it measures and can use a genuine key to sign what it likes: the
+measurements raise the cost of fraud, and your backend weighs them with its own business logic.
+
+## Tested on
+
+The example app with the sample backends, on an OPPO CPH2083 (Android 9) and an iPhone 7 (iOS 15.8.5,
+installed through TrollStore); the plugin built into fresh apps on Flutter 3.44.0 and 3.47.2 (Android).
+Not yet tested: screen-recording detection on Android 15 and later; phones with 16 KB memory pages; an
+App Store or TestFlight build; iOS screen protection when a window is replaced, or with several windows
+(iPad). Until your own release has run there, read what those paths report as not measured, and never
+treat a phone's first, unfamiliar readings as fraud.
 
 ## Licence
 

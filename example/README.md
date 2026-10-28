@@ -43,8 +43,10 @@ carries a ✓ when the backend did what it should, a red ✗ when it did not.
    lock, step-up is off: `step-up off here (…)`, and step 7 cannot pass.
 2. **Measurements:** switch on **All of them**, tap **Ask for the location permission** and allow it.
    Once is enough; the switches reset when the app restarts.
-3. **Scan.** Expect: `The backend answered next: allow, report …`. Under **Hooks, gadgets and memory
-   changes** every row reads `ok`, none `not asked`. Open any row for the fields the phone sent.
+3. **Scan.** Expect: `The backend answered next: allow, report …` — the sample backends answer
+   `scan_again` when a measurement could not be read, and `review` when its figures contradict each
+   other. Under **Hooks, gadgets and memory changes** every row reads `measured`, none `not asked`. Open
+   any row for the fields the phone sent.
 4. **Account → Sign in.** Expect: `An account session for this installation.`
 5. **Requests → Protected request.** Expect: ✓ `{"done":"/v1/demo/echo"}`.
 6. **Sensitive, without approval.** Expect: ✓ `Refused, as it should be: 403 needs_approval`.
