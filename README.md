@@ -6,7 +6,7 @@ app sends — and, if you turn them on, a second key the person must unlock to a
 PIN your backend checks. **It never scores and never decides: your backend does.** The integration guide
 (`doc/integration_guide.md`) is the protocol: what the plugin sends and how your backend checks it.
 The example app (`example/`) puts every piece below in a working app, against the sample backends in
-`backend/`.
+`backend/`; its README walks through testing it on a phone, step by step.
 
 Android 7.0 (API 24) and later; iOS 15 and later. Status: 0.1.0, not yet published.
 
