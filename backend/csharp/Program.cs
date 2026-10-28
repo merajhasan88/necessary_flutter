@@ -166,6 +166,13 @@ public sealed class Backend(JsonSchema schema, string? testToken)
         ["ios"] = ["environment", "simulator"],
     };
 
+    // The personal measurements (the guide, section 8): this sample asks for every one in every scan,
+    // so that the example app can show each one it enables. A production backend asks only for those
+    // it uses.
+    private static readonly string[] Personal =
+        ["local_addresses", "accessibility", "notification_access", "other_access", "screen_capture",
+            "location", "mock_location"];
+
     private static readonly Regex Uuid =
         new("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", RegexOptions.IgnoreCase);
 
@@ -540,7 +547,8 @@ public sealed class Backend(JsonSchema schema, string? testToken)
         {
             ["challenge_id"] = challengeId, ["nonce"] = Wire.Encode(nonce), ["platform"] = platform,
             ["required_probes"] = new JsonArray(required.Select(p => (JsonNode)p).ToArray()),
-            ["optional_probes"] = new JsonArray(), ["expires_at"] = Wire.Iso(expires),
+            ["optional_probes"] = new JsonArray(Personal.Select(p => (JsonNode)p).ToArray()),
+            ["expires_at"] = Wire.Iso(expires),
         };
     }
 
@@ -954,13 +962,25 @@ public sealed class Backend(JsonSchema schema, string? testToken)
         {
             RequireOperationScan(call);
         }
-        if (needs.Contains("step_up"))
+        if (needs.Contains("approval"))
         {
-            RequireStepUp(call, session, installation, nonce);
-        }
-        if (needs.Contains("app_pin"))
-        {
-            RequireAppPin(call, session, nonce);
+            // The person's approval, as the request offers it: step-up, the app PIN, or both -- and
+            // each one offered must hold.
+            var stepUp = !string.IsNullOrEmpty(call.Header("X-Step-Up-Proof"));
+            var appPin = !string.IsNullOrEmpty(call.Header("X-App-PIN-Proof"));
+            if (!stepUp && !appPin)
+            {
+                throw new Refusal(403, "needs_approval",
+                    "This request needs the person's approval: step-up or the app PIN.");
+            }
+            if (stepUp)
+            {
+                RequireStepUp(call, session, installation, nonce);
+            }
+            if (appPin)
+            {
+                RequireAppPin(call, session, nonce);
+            }
         }
         return new JsonObject { ["done"] = call.Path };
     }
@@ -1050,8 +1070,7 @@ public static class Program
         ["/v1/demo/sign-in"] = (b, c, body) => b.SignIn(c, body),
         ["/v1/demo/echo"] = (b, c, body) => Task.FromResult(b.Demo(c)),
         ["/v1/demo/transfer"] = (b, c, body) => Task.FromResult(b.Demo(c, "scan")),
-        ["/v1/demo/approve"] = (b, c, body) => Task.FromResult(b.Demo(c, "step_up")),
-        ["/v1/demo/unlock"] = (b, c, body) => Task.FromResult(b.Demo(c, "app_pin")),
+        ["/v1/demo/sensitive"] = (b, c, body) => Task.FromResult(b.Demo(c, "approval")),
     };
 
     private static async Task Handle(Backend backend, HttpContext context)

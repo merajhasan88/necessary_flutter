@@ -355,6 +355,33 @@ void main() {
     expect(scan.reportId, 'report-1');
   });
 
+  test('the personal measurements change with the app: the next scan '
+      'follows, the installation and its step-up key stay', () async {
+    final _Backend backend = _Backend();
+    final _Collector collector = _Collector();
+    final DeviceTrust trust = _trust(
+      backend,
+      collector: collector,
+      stepUp: const StepUpOptions(),
+    );
+    await trust.start();
+    await trust.scan();
+    expect(collector.enabled, isEmpty);
+    trust.personalMeasurements = <PersonalMeasurement>{
+      PersonalMeasurement.location,
+      PersonalMeasurement.accessibility,
+    };
+    await trust.scan();
+    expect(collector.enabled, <String>['accessibility', 'location']);
+    expect(trust.stepUpKey, isNotNull);
+    expect(
+      backend.paths.where(
+        (String path) => path.startsWith('/v1/installations'),
+      ),
+      hasLength(3),
+    );
+  });
+
   test('a scan for one operation is asked under the account session', () async {
     final _Backend backend = _Backend();
     final DeviceTrust trust = _trust(backend);

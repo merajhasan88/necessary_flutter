@@ -13,8 +13,10 @@ the section numbers in the code:
   under a key of the backend's — answered once, consumed only after the signature verifies, for an
   installation session of ten minutes.
 - **The scan** (section 2): a challenge asking for the measurements it relies on every time and varying
-  the others; the report's ten checks in order; then the report against the contract's schema; the
-  answer `{"integrity": {"report_id": …, "next": "allow"}}` — what to do next, never a score.
+  the others, and for every personal measurement (section 8), so that the example app can show each one
+  it enables — a production backend asks only for those it uses; the report's ten checks in order; then
+  the report against the contract's schema; the answer `{"integrity": {"report_id": …, "next":
+  "allow"}}` — what to do next, never a score.
 - **A scan for one action** (section 2): named only under an account session; its report approves that
   one request, once, sent back as `X-Integrity-Report`.
 - **Request proofs** (section 3): every field against the request received, the clock window, the
@@ -40,8 +42,7 @@ session and request proof the guide describes:
 | `POST /v1/demo/sign-in` `{"handle", "password"}` → `{"account_session"}` | the installation session | — |
 | `POST /v1/demo/echo` | an account session | a request proof |
 | `POST /v1/demo/transfer` | an account session | a scan made for this request (`X-Integrity-Report`) |
-| `POST /v1/demo/approve` | an account session | the person's step-up approval |
-| `POST /v1/demo/unlock` | an account session | the app PIN's proof |
+| `POST /v1/demo/sensitive` | an account session | the person's approval: step-up, the app PIN's proof, or both — each one sent must hold; with neither, `403 needs_approval` |
 
 With `--test-controls`, and only for requests carrying `X-Test-Token: $SAMPLE_TEST_TOKEN` (16
 characters or more), `POST /test/expire-sessions`, `POST /test/forget` `{"installation_id"}` and

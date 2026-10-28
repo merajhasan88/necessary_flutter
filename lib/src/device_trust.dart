@@ -110,8 +110,11 @@ class DeviceTrust {
   /// The guide's calls, for an app that makes them itself.
   final DeviceTrustClient client;
 
-  /// What this app enables; the backend asks for what it needs of them.
-  final Set<PersonalMeasurement> personalMeasurements;
+  /// What this app enables; the backend asks for what it needs of them. The
+  /// app may change it whenever the person does -- in a privacy setting, say:
+  /// the next scan measures what it holds then, and the installation, its
+  /// session and its step-up key stay as they are.
+  Set<PersonalMeasurement> personalMeasurements;
 
   /// How the step-up key is made, or null for no step-up. An app that takes
   /// these from its backend sets them before [start].

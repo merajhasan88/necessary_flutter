@@ -1,6 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The location measurements: the app declares the permission and asks
+         for it from its own screen; the plugin never asks. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <application
-        android:label="necessary_example"
+        android:label="Necessary"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

@@ -278,6 +278,13 @@ void main() {
           (scan.answer['integrity'] as Map<String, dynamic>)['next'],
           'allow',
         );
+        // Every personal measurement is asked for, so that the example app
+        // can show each one it enables.
+        expect(scan.challenge.optionalProbes, <String>[
+          for (final PersonalMeasurement measurement
+              in PersonalMeasurement.values)
+            measurement.wireName,
+        ]);
       },
     );
 
@@ -322,63 +329,103 @@ void main() {
       await expectLater(transfer(scan.reportId), _refused('needs_scan'));
     });
 
-    test('step-up: the person approves one request', () async {
-      final DeviceTrust trust = _trust(stepUp: const StepUpOptions());
+    test("a sensitive request needs the person's approval: step-up, the app "
+        'PIN, or both', () async {
+      final DeviceTrust trust = _trust(
+        stepUp: const StepUpOptions(),
+        appPin: const AppPinOptions(),
+      );
       await trust.start();
-      final String account = await _signIn(trust);
-      Future<Map<String, dynamic>> approve({required bool stepUp}) async =>
-          trust.send(
-            await trust.signRequest(
-              method: 'POST',
-              path: '/v1/demo/approve',
-              bearer: account,
-              body: '{"payee":"payee-7"}',
-              stepUp: stepUp,
-            ),
-          );
-      await expectLater(approve(stepUp: false), _refused('needs_step_up'));
+      final String account = await _signIn(trust, password: 'pin owner');
+      Future<Map<String, dynamic>> sensitive({
+        bool stepUp = false,
+        String? pin,
+      }) async => trust.send(
+        await trust.signRequest(
+          method: 'POST',
+          path: '/v1/demo/sensitive',
+          bearer: account,
+          body: '{"payee":"payee-7"}',
+          stepUp: stepUp,
+          appPin: pin,
+        ),
+      );
+      await expectLater(sensitive(), _refused('needs_approval'));
       expect(
-        await approve(stepUp: true),
-        containsPair('done', '/v1/demo/approve'),
+        await sensitive(stepUp: true),
+        containsPair('done', '/v1/demo/sensitive'),
+      );
+      await expectLater(sensitive(pin: '135790'), _refused('app_pin_not_set'));
+      expect(
+        await trust.setAppPin(
+          session: account,
+          pin: '135790',
+          reauthentication: <String, dynamic>{'password': 'pin owner'},
+        ),
+        containsPair('app_pin_set', true),
+      );
+      await expectLater(sensitive(pin: '000000'), _refused('app_pin_invalid'));
+      expect(
+        await sensitive(pin: '135790'),
+        containsPair('done', '/v1/demo/sensitive'),
+      );
+      expect(
+        await sensitive(stepUp: true, pin: '135790'),
+        containsPair('done', '/v1/demo/sensitive'),
       );
     });
 
-    test(
-      'the app PIN: set with the password, then one request unlocked',
-      () async {
-        final DeviceTrust trust = _trust(appPin: const AppPinOptions());
-        await trust.start();
-        final String account = await _signIn(trust, password: 'pin owner');
-        await expectLater(
-          trust.signRequest(
+    test('a request proof is refused for another body, path or time, and '
+        "under another phone's key", () async {
+      final DeviceTrust trust = _trust();
+      await trust.start();
+      final String account = await _signIn(trust);
+      const String body = '{"amount":25}';
+      Future<RequestProof> echo() => trust.signRequest(
+        method: 'POST',
+        path: '/v1/demo/echo',
+        bearer: account,
+        body: body,
+      );
+      await expectLater(
+        trust.client.sendSigned(await echo(), encodedBody: '{"amount":2500}'),
+        _refused('proof_not_accepted'),
+      );
+      await expectLater(
+        trust.client.sendSigned(await echo(), path: '/v1/demo/sensitive'),
+        _refused('proof_not_accepted'),
+      );
+      await expectLater(
+        trust.send(
+          await signRequest(
+            identity: trust.identity!,
             method: 'POST',
-            path: '/v1/demo/unlock',
-            bearer: account,
-            appPin: '135790',
+            path: '/v1/demo/echo',
+            bearerToken: account,
+            encodedBody: body,
+            timestamp: DateTime.now().millisecondsSinceEpoch ~/ 1000 - 600,
           ),
-          _refused('app_pin_not_set'),
-        );
-        expect(
-          await trust.setAppPin(
-            session: account,
-            pin: '135790',
-            reauthentication: <String, dynamic>{'password': 'pin owner'},
-          ),
-          containsPair('app_pin_set', true),
-        );
-        Future<Map<String, dynamic>> unlock(String? pin) async => trust.send(
-          await trust.signRequest(
+        ),
+        _refused('proof_not_accepted'),
+      );
+      // The session copied to another phone: its key cannot sign for this
+      // installation, even naming it.
+      final DeviceTrust other = _trust();
+      await other.start();
+      await expectLater(
+        other.send(
+          await signRequest(
+            identity: other.identity!,
             method: 'POST',
-            path: '/v1/demo/unlock',
-            bearer: account,
-            appPin: pin,
+            path: '/v1/demo/echo',
+            bearerToken: account,
+            encodedBody: body,
+            installationId: trust.identity!.installationId,
           ),
-        );
-        await expectLater(unlock(null), _refused('needs_app_pin'));
-        await expectLater(unlock('000000'), _refused('app_pin_invalid'));
-        expect(await unlock('135790'), containsPair('done', '/v1/demo/unlock'));
-      },
-    );
+        ),
+        _refused('invalid_installation_signature'),
+      );
+    });
 
     test("the guide's protocol errors, each acted on once", () async {
       final DeviceTrust trust = _trust();

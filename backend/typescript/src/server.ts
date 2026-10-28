@@ -40,6 +40,10 @@ const VARIED: Record<string, string[]> = {
     "developer_settings", "instrumentation_threads", "exec_mappings", "code_integrity"],
   ios: ["environment", "simulator"],
 };
+// The personal measurements (the guide, section 8): this sample asks for every one in every scan, so
+// that the example app can show each one it enables. A production backend asks only for those it uses.
+const PERSONAL = ["local_addresses", "accessibility", "notification_access", "other_access",
+  "screen_capture", "location", "mock_location"];
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 type JsonObject = { [key: string]: Json };
@@ -396,7 +400,7 @@ class Backend {
     });
     return {
       challenge_id: challengeId, nonce: b64urlEncode(nonce), platform, required_probes: required,
-      optional_probes: [], expires_at: iso(expires),
+      optional_probes: [...PERSONAL], expires_at: iso(expires),
     };
   }
 
@@ -654,8 +658,18 @@ class Backend {
   demo(request: Request, needs: string[]): JsonObject {
     const [session, installation, nonce] = this.authenticate(request, ["account"]);
     if (needs.includes("scan")) this.requireOperationScan(request);
-    if (needs.includes("step_up")) this.requireStepUp(request, session, installation, nonce);
-    if (needs.includes("app_pin")) this.requireAppPin(request, session, nonce);
+    if (needs.includes("approval")) {
+      // The person's approval, as the request offers it: step-up, the app PIN, or both -- and each
+      // one offered must hold.
+      const stepUp = Boolean(request.header("X-Step-Up-Proof"));
+      const appPin = Boolean(request.header("X-App-PIN-Proof"));
+      if (!stepUp && !appPin) {
+        throw new Refusal(403, "needs_approval",
+          "This request needs the person's approval: step-up or the app PIN.");
+      }
+      if (stepUp) this.requireStepUp(request, session, installation, nonce);
+      if (appPin) this.requireAppPin(request, session, nonce);
+    }
     return { done: request.path };
   }
 
@@ -692,8 +706,7 @@ const ROUTES: Record<string, Route> = {
   "/v1/demo/sign-in": (b, r, body) => b.signIn(r, body),
   "/v1/demo/echo": (b, r) => b.demo(r, []),
   "/v1/demo/transfer": (b, r) => b.demo(r, ["scan"]),
-  "/v1/demo/approve": (b, r) => b.demo(r, ["step_up"]),
-  "/v1/demo/unlock": (b, r) => b.demo(r, ["app_pin"]),
+  "/v1/demo/sensitive": (b, r) => b.demo(r, ["approval"]),
 };
 
 function answer(response: http.ServerResponse, status: number, value: unknown, request?: Request): void {

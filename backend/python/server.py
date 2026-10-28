@@ -56,6 +56,11 @@ VARIED = {
                 "exec_mappings", "code_integrity"],
     "ios": ["environment", "simulator"],
 }
+# The personal measurements (the guide, section 8): this sample asks for every
+# one in every scan, so that the example app can show each one it enables. A
+# production backend asks only for those it uses.
+PERSONAL = ["local_addresses", "accessibility", "notification_access", "other_access",
+            "screen_capture", "location", "mock_location"]
 
 
 # --- Binary values travel as base64url without padding; hashes are hex SHA-256.
@@ -345,7 +350,7 @@ class Backend:
                 "session": request.bearer if digest else None,
             }
         return {"challenge_id": challenge_id, "nonce": b64url_encode(nonce), "platform": platform,
-                "required_probes": required, "optional_probes": [], "expires_at": iso(expires)}
+                "required_probes": required, "optional_probes": PERSONAL, "expires_at": iso(expires)}
 
     @staticmethod
     def _operation_valid(operation):
@@ -600,10 +605,18 @@ class Backend:
         session, installation, nonce = self.authenticate(request, ("account",))
         if "scan" in needs:
             self.require_operation_scan(request, session)
-        if "step_up" in needs:
-            self.require_step_up(request, session, installation, nonce)
-        if "app_pin" in needs:
-            self.require_app_pin(request, session, nonce)
+        if "approval" in needs:
+            # The person's approval, as the request offers it: step-up, the
+            # app PIN, or both -- and each one offered must hold.
+            step_up = bool(request.headers.get("X-Step-Up-Proof"))
+            app_pin = bool(request.headers.get("X-App-PIN-Proof"))
+            if not (step_up or app_pin):
+                raise Refusal(403, "needs_approval",
+                              "This request needs the person's approval: step-up or the app PIN.")
+            if step_up:
+                self.require_step_up(request, session, installation, nonce)
+            if app_pin:
+                self.require_app_pin(request, session, nonce)
         return {"done": request.path}
 
     # --- Test controls, on only with --test-controls.
@@ -635,8 +648,7 @@ ROUTES = {
     "/v1/demo/sign-in": lambda b, r, body: b.sign_in(r, body),
     "/v1/demo/echo": lambda b, r, body: b.demo(r, ()),
     "/v1/demo/transfer": lambda b, r, body: b.demo(r, ("scan",)),
-    "/v1/demo/approve": lambda b, r, body: b.demo(r, ("step_up",)),
-    "/v1/demo/unlock": lambda b, r, body: b.demo(r, ("app_pin",)),
+    "/v1/demo/sensitive": lambda b, r, body: b.demo(r, ("approval",)),
 }
 
 

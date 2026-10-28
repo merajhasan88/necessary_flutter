@@ -8,6 +8,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>The location measurements report the last location this iPhone already knows.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Face ID approves requests when biometric step-up is on.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
@@ -15,7 +17,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Necessary Example</string>
+	<string>Necessary</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

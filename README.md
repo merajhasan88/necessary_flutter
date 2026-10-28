@@ -5,6 +5,8 @@ phone, signed measurements of the phone and of the app running on it, and a proo
 app sends — and, if you turn them on, a second key the person must unlock to approve a request, and a
 PIN your backend checks. **It never scores and never decides: your backend does.** The integration guide
 (`doc/integration_guide.md`) is the protocol: what the plugin sends and how your backend checks it.
+The example app (`example/`) puts every piece below in a working app, against the sample backends in
+`backend/`.
 
 Android 7.0 (API 24) and later; iOS 15 and later. Status: 0.1.0, not yet published.
 
@@ -51,6 +53,36 @@ The plugin measures what your backend's challenge asks for — and, of the perso
 for, the ones your app enabled — signs the report with the installation key and sends it. It acts on the
 guide's protocol errors once (a challenge expired, the installation session expired, the backend lost
 the installation, a short wait); any other refusal reaches your app as an `ApiException`.
+
+## Personal measurements
+
+Seven measurements identify a person's phone, network or habits. Each is collected only when your app
+enables it **and** your backend's challenge asks for it (`optional_probes`); otherwise the report says
+`not_enabled`. None is on unless your app turns it on:
+
+```dart
+trust.personalMeasurements = {
+  PersonalMeasurement.screenCapture, // the screen recorded, mirrored or cast
+  PersonalMeasurement.location, // the last location the phone already knows
+};
+```
+
+Set them in the constructor, or change them whenever the person does — in a privacy setting: the next
+scan follows, and the installation and its step-up key stay as they are.
+
+| `PersonalMeasurement` | What it reports | Platforms |
+|---|---|---|
+| `localAddresses` | the phone's own IP addresses, link-local ones left out | both |
+| `accessibility` | the Accessibility services that are on, and the keyboard in use | Android |
+| `notificationAccess` | the apps allowed to read notifications | Android |
+| `otherAccess` | device-administrator apps, and known remote-control apps installed | Android |
+| `screenCapture` | the screen being recorded, mirrored or cast | both |
+| `location` | the last location the phone already knows — never a fresh fix, never a prompt | both |
+| `mockLocation` | whether that location was faked | both |
+
+The location needs the person's permission as well: declare it (Install, above) and ask from your own
+screen with `await trust.requestLocationPermission()`, which answers `precise`, `approximate` or
+`none`. On iOS the three Android-only measurements answer `unsupported`.
 
 ## Prove your own requests
 
