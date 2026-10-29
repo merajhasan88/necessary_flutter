@@ -648,7 +648,7 @@ class IntegrityProbeManager(
     )
 
     // A lookup that could not start, or never finished, is not "no su": the
-    // probe fails, which the server scores as integrity_probe_failed.
+    // probe fails, and the report says it measured nothing.
     private fun probeRootShell(): Map<String, Any> = ProbeReads.rootShell(
         runCommand(listOf("/system/bin/sh", "-c", "command -v su || which su || true"))
     )

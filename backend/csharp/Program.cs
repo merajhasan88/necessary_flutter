@@ -1482,6 +1482,7 @@ public static class Program
             context.Request.Headers, buffer.ToArray());
         int status = 200;
         JsonNode answer;
+        var failed = "";
         try
         {
             if (call.Method == "GET" && call.Path == "/health")
@@ -1527,15 +1528,23 @@ public static class Program
         {
             status = refusal.Status;
             var error = new JsonObject { ["code"] = refusal.Code, ["message"] = refusal.Message };
-            if (refusal.Details is not null)
+            // Which check failed goes to the log, never to the phone, which is told what to do next
+            // (section 7): what gave a request away is what an attacker would fix.
+            var details = refusal.Details?.DeepClone() as JsonObject ?? new JsonObject();
+            failed = string.Join(" ", new[] { "check", "at" }
+                .Where(key => details.ContainsKey(key))
+                .Select(key => $"{key}={(details[key] is JsonValue value ? value.ToString() : "")}"));
+            details.Remove("check");
+            details.Remove("at");
+            if (details.Count > 0)
             {
-                error["details"] = refusal.Details;
+                error["details"] = details;
             }
             answer = new JsonObject { ["error"] = error };
         }
-        // One line per call: the method, the path, the status and any refusal's code;
-        // never a body or a header -- they hold PINs.
-        Console.WriteLine($"{call.Method} {call.Path} {status} {Wire.Text(answer["error"]?["code"]) ?? ""}");
+        // One line per call: the method, the path, the status, any refusal's code and the check
+        // that failed; never a body or a header -- they hold PINs.
+        Console.WriteLine($"{call.Method} {call.Path} {status} {Wire.Text(answer["error"]?["code"]) ?? ""} {failed}".TrimEnd());
         context.Response.StatusCode = status;
         context.Response.ContentType = "application/json";
         await context.Response.WriteAsync(answer.ToJsonString());

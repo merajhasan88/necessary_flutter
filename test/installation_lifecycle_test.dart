@@ -418,6 +418,23 @@ void main() {
   });
 
   test(
+    'the store itself, asked twice at once, makes one ID for one key',
+    () async {
+      final InstallationStore store = InstallationStore(
+        key: _Keystore(holds: false),
+      );
+      final List<InstallationIdentity> loaded = await Future.wait(
+        <Future<InstallationIdentity>>[
+          store.loadOrCreate(),
+          store.loadOrCreate(),
+        ],
+      );
+      expect(loaded[0].installationId, loaded[1].installationId);
+      expect(await _storedId(), loaded[0].installationId);
+    },
+  );
+
+  test(
     'two first loads at once load once: one key, one installation ID',
     () async {
       final _CountingStore store = _CountingStore();

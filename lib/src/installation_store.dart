@@ -25,11 +25,28 @@ class InstallationStore {
   final NativeInstallationKey key;
   final FlutterSecureStorage _storage;
 
+  Future<InstallationIdentity>? _loading;
+
   /// The installation: its key, made on first use, and its ID. A key made
   /// now ([InstallationIdentity.createdThisLaunch]) is a new installation, so
   /// it gets a new ID even where one was stored: that ID belongs to the key
-  /// that was lost, and a backend refuses a known ID under another key.
-  Future<InstallationIdentity> loadOrCreate() async {
+  /// that was lost, and a backend refuses a known ID under another key. Calls
+  /// at once share one load, so that one key never gets two IDs.
+  Future<InstallationIdentity> loadOrCreate() {
+    final Future<InstallationIdentity>? running = _loading;
+    if (running != null) {
+      return running;
+    }
+    late final Future<InstallationIdentity> loading;
+    loading = _loadOrCreate().whenComplete(() {
+      if (identical(_loading, loading)) {
+        _loading = null;
+      }
+    });
+    return _loading = loading;
+  }
+
+  Future<InstallationIdentity> _loadOrCreate() async {
     final String? stored = await _storage.read(
       key: _installationIdKey,
       iOptions: _iosOptions,

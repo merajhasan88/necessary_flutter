@@ -6,6 +6,11 @@ description: >-
 version: 0.1.0
 repository: https://github.com/merajhasan88/necessary_flutter
 issue_tracker: https://github.com/merajhasan88/necessary_flutter/issues
+topics:
+  - security
+  - authentication
+  - fraud-detection
+  - device-integrity
 
 environment:
   sdk: ^3.12.0
@@ -15,7 +20,7 @@ dependencies:
   flutter:
     sdk: flutter
   crypto: ">=3.0.3 <4.0.0"
-  flutter_secure_storage: ">=10.3.1 <11.0.0"
+  flutter_secure_storage: ">=10.3.1 <12.0.0"
   http: ">=1.2.0 <2.0.0"
   uuid: ">=4.4.0 <5.0.0"
 

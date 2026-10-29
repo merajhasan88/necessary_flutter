@@ -1,6 +1,7 @@
 # Necessary example
 
-The `necessary` plugin in a working app, against one of its sample backends (`../backend`): the app side
+The `necessary` plugin in a working app, against one of its sample backends
+([`backend/`](https://github.com/merajhasan88/necessary_flutter/tree/main/backend) in the repository): the app side
 of device trust, in code. The integration guide (`../doc/integration_guide.md`) is the backend side, in
 words.
 
@@ -23,7 +24,7 @@ Each section opens and closes; each result says whether the backend did what it 
 
 | Section | What you do | What a backend that makes the guide's checks answers |
 |---|---|---|
-| Installation | **Start**: the key is made in the phone's keystore, registered and proved. **Prove again**. **New installation** deletes the key, as a reinstall would | the installation, its key, and the step-up key the phone made |
+| Installation | **Start**: the key is made in the phone's keystore, registered and proved. **Prove again**. **New installation** deletes the keys, as a reinstall would | the installation, its key, and the step-up key the phone made |
 | Measurements | turn each personal measurement on or off, and see the code for your choice; ask for the location permission; **Scan** | every measurement the signed report carried, each opening to its fields, grouped by what it catches: the hooks, gadgets and changes in memory first. One the backend did not ask for shows as not asked |
 | Account | **Sign in** (the sample makes the account at its first sign-in) | an account session for this installation |
 | Requests | **Protected request**; **Sensitive, without approval**; **Sensitive, with step-up**; **Re-enrol the step-up key**; set the app PIN, then **Sensitive, with the app PIN** | accepted; refused, `403 needs_approval`; accepted once the person unlocks the screen lock; a new key taken with the account password; accepted |

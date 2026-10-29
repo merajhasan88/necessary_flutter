@@ -7,7 +7,8 @@ sends — and, if you turn them on, a second key the person must unlock to appro
 PIN your backend checks. **It never scores and never decides: your backend does.** The integration guide
 (`doc/integration_guide.md`) is the protocol: what the plugin sends and how your backend checks it.
 The example app (`example/`) puts every piece below in a working app, against the sample backends in
-`backend/`; its README walks through testing it on a phone, step by step.
+[`backend/`](https://github.com/merajhasan88/necessary_flutter/tree/main/backend) (in the
+repository, not the package); its README walks through testing it on a phone, step by step.
 
 Android 7.0 (API 24) and later; iOS 15 and later; Flutter 3.44 (Dart 3.12) and later — the example app
 needs Flutter 3.47. Status: 0.1.0, not yet published.
@@ -220,7 +221,10 @@ await SecureScreen.protect(false);
 ```
 
 Calls nest — each `protect(true)` needs its `protect(false)` — and when the last one ends the window gets
-back what it had: a window your app keeps secure itself stays secure.
+back what it had: a window your app keeps secure itself stays secure. On iOS the cover is over your app's
+window, not the system keyboard; on the iPhone it was tested on (iOS 15), the keyboard's key presses did
+not show in a recording. Opening Control Center to start a recording closes the keyboard, so protect
+whenever the field has focus, as the example does.
 
 Your backend's refusals reach your app as `ApiException` with the guide's codes: `app_pin_not_set`,
 `app_pin_invalid` (it counts), `app_pin_locked` (a new PIN, set with the re-authentication, unlocks it).
@@ -236,6 +240,7 @@ Step-up and the app PIN combine: your backend decides which requests need which.
 | The activity, a scene or a window is replaced | screen protection follows: Android sets it on each new window; on iOS the cover is placed again, on the window the person sees in each scene, whenever a window becomes key, visible or hidden or a scene comes to the foreground — and protection asked for before any window exists covers the first one. A step-up prompt the recreation cancelled answers `STEPUP_CANCELLED`: ask again |
 | The Flutter engine is torn down | iOS drops the protection, its covers and its observers with the engine |
 | Two calls at once | `start()`, `prove()`, `loadIdentity()` and the same `scan()` run once, and the second caller gets the first's result; scans for different operations, or asked after the personal measurements changed, run apart |
+| A step-up prompt is open | on iOS the plugin's other calls — a scan, a request's signature — wait until the person answers it; Android runs them meanwhile |
 | `reset()` or `close()` while calls run | the calls end with `InterruptedCallException` and keep nothing — no session, no installation ID, no report sent; after a reset, new calls wait for the deletion and never join one made before |
 | A call abandoned, or its answer lost | a scan is simply asked for again — a challenge serves once; the plugin never sends a signed request twice: sign it again, and let your backend decide whether the first one reached it |
 | A report over 65,536 bytes | it is never sent: the app lists the contract lets a collector shorten are shortened, and say `truncated`; anything else answers an `ApiException` `report_too_large` |
@@ -266,8 +271,8 @@ measurements raise the cost of fraud, and your backend weighs them with its own 
 The example app with the sample backends, on an OPPO CPH2083 (Android 9) and an iPhone 7 (iOS 15.8.5,
 installed through TrollStore); the plugin built into fresh apps on Flutter 3.44.0 and 3.47.2 (Android).
 Not yet tested: screen-recording detection on Android 15 and later; phones with 16 KB memory pages; an
-App Store or TestFlight build; iOS screen protection when a window is replaced, or with several windows
-(iPad). Until your own release has run there, read what those paths report as not measured, and never
+App Store or TestFlight build; iOS screen protection when a window is replaced, with several windows
+(iPad), or when the Flutter engine is torn down. Until your own release has run there, read what those paths report as not measured, and never
 treat a phone's first, unfamiliar readings as fraud.
 
 ## Licence

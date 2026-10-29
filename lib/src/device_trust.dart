@@ -258,8 +258,9 @@ class DeviceTrust {
     return _proving = proving;
   }
 
-  /// Deletes the key and the installation ID (InstallationStore.clear) and
-  /// forgets the session: the next start is a new installation. Calls still
+  /// Deletes the key, the installation ID (InstallationStore.clear) and the
+  /// step-up key, and forgets the session: the next start is a new
+  /// installation, linked to this one by nothing it holds. Calls still
   /// running end with InterruptedCallException and keep nothing; calls made
   /// from now on wait for the deletion, and never join one made before.
   Future<void> reset() {
@@ -279,6 +280,14 @@ class DeviceTrust {
         if (saving != null) saving.then<void>((_) {}, onError: (_) {}),
       ]);
       await _store.clear();
+      // The step-up key goes with the installation, as on a reinstall: kept,
+      // it would link the next installation to this one.
+      try {
+        await _stepUpKey.deleteKey();
+      } catch (_) {
+        // Best effort: none to delete, none this phone can make, or no
+        // native side at all; the installation itself is gone either way.
+      }
     }();
     // Later loads wait for the deletion, whatever came of it; the caller of
     // reset hears what did.

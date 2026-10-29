@@ -961,11 +961,13 @@ def handler_for(backend):
         def log_message(self, fmt, *args):   # never a request's body or headers: they hold PINs
             pass
 
-        def answer(self, status, value):
-            # One line per call: the method, the path, the status and any refusal's code.
+        def answer(self, status, value, failed=""):
+            # One line per call: the method, the path, the status, any refusal's
+            # code and the check that failed.
             error = value.get("error") if isinstance(value, dict) else None
-            print("%s %s %d %s" % (self.command, urlsplit(self.path).path, status,
-                                   error["code"] if error else ""), flush=True)
+            print(("%s %s %d %s %s" % (self.command, urlsplit(self.path).path, status,
+                                       error["code"] if error else "", failed)).rstrip(),
+                  flush=True)
             data = json.dumps(value).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
@@ -1008,10 +1010,16 @@ def handler_for(backend):
                     raise Refusal(404, "no_such_path", "No such path.")
                 self.answer(200, route(backend, request, body))
             except Refusal as refusal:
+                # Which check failed goes to the log, never to the phone, which
+                # is told what to do next (section 7): what gave a request away
+                # is what an attacker would fix.
+                details = dict(refusal.details or {})
+                failed = " ".join("%s=%s" % (key, details.pop(key))
+                                  for key in ("check", "at") if key in details)
                 error = {"code": refusal.code, "message": refusal.message}
-                if refusal.details:
-                    error["details"] = refusal.details
-                self.answer(refusal.status, {"error": error})
+                if details:
+                    error["details"] = details
+                self.answer(refusal.status, {"error": error}, failed)
 
     return Handler
 

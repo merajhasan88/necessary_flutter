@@ -329,8 +329,18 @@ Future<String> _signIn(
   return (await trust.send(proof))['account_session'] as String;
 }
 
+/// Refused with [code] -- and, like every refusal here, without naming the
+/// check that failed: the phone is told what to do next, never what gave a
+/// request away.
 Matcher _refused(String code) => throwsA(
-  isA<ApiException>().having((ApiException e) => e.code, 'code', code),
+  isA<ApiException>()
+      .having((ApiException e) => e.code, 'code', code)
+      .having(
+        (ApiException e) =>
+            e.details?.keys.toSet().intersection(<String>{'check', 'at'}),
+        'the failed check named',
+        anyOf(isNull, isEmpty),
+      ),
 );
 
 void main() {

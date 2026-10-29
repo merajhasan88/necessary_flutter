@@ -66,8 +66,10 @@ split-APK order refuses); and `POST /test/pin-checks` `{"hold": true}` holds eac
 claimed its attempt, until `{"hold": false}` releases them (with `"fail": true`, as if their verifier
 broke) — answering `{"waiting": n}`, the checks held. A deployed sample runs without them.
 
-Each sample logs one line per call — its method, path, status and any refusal's code — and never a
-body or a header, which hold PINs and tokens.
+Each sample logs one line per call — its method, path, status, any refusal's code and the check that
+failed — and never a body or a header, which hold PINs and tokens. The phone is told the code and what
+to do next, never which check failed: what gave a request away is what an attacker would fix (the
+guide, section 7).
 
 ## Run
 

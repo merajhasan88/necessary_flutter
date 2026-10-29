@@ -998,17 +998,18 @@ const ROUTES: Record<string, Route> = {
   "/v1/demo/sensitive": (b, r) => b.demo(r, ["approval"]),
 };
 
-function answer(response: http.ServerResponse, status: number, value: unknown, request?: Request): void {
-  // One line per call: the method, the path, the status and any refusal's code;
-  // never a body or a header -- they hold PINs.
+function answer(response: http.ServerResponse, status: number, value: unknown, request?: Request,
+  failed = ""): void {
+  // One line per call: the method, the path, the status, any refusal's code and the check that
+  // failed; never a body or a header -- they hold PINs.
   const error = (value as { error?: { code?: string } } | null)?.error;
-  console.log(`${request?.method ?? "-"} ${request?.path ?? "-"} ${status} ${error?.code ?? ""}`);
+  console.log(`${request?.method ?? "-"} ${request?.path ?? "-"} ${status} ${error?.code ?? ""} ${failed}`.trimEnd());
   const data = Buffer.from(JSON.stringify(value), "utf8");
   response.writeHead(status, { "Content-Type": "application/json", "Content-Length": data.length });
   response.end(data);
 }
 
-async function handle(backend: Backend, request: Request): Promise<[number, unknown]> {
+async function handle(backend: Backend, request: Request): Promise<[number, unknown, string?]> {
   if (request.method === "GET") {
     return request.path === "/health" ? [200, { ok: true }]
       : [404, { error: { code: "no_such_path", message: "No such path." } }];
@@ -1039,9 +1040,14 @@ async function handle(backend: Backend, request: Request): Promise<[number, unkn
     return [200, await route(backend, request, body)];
   } catch (error) {
     if (!(error instanceof Refusal)) throw error;
+    // Which check failed goes to the log, never to the phone, which is told what to do next
+    // (section 7): what gave a request away is what an attacker would fix.
+    const { check, at, ...details } = error.details ?? {};
+    const failed = Object.entries({ check, at }).filter(([, value]) => value !== undefined)
+      .map(([key, value]) => `${key}=${value}`).join(" ");
     return [error.status, {
-      error: { code: error.code, message: error.message, ...(error.details ? { details: error.details } : {}) },
-    }];
+      error: { code: error.code, message: error.message, ...(Object.keys(details).length ? { details } : {}) },
+    }, failed];
   }
 }
 
@@ -1080,7 +1086,7 @@ function main(): void {
         return;
       }
       const request = new Request(incoming.method ?? "GET", incoming.url ?? "/", incoming.headers, Buffer.concat(chunks));
-      handle(backend, request).then(([status, value]) => answer(response, status, value, request), () =>
+      handle(backend, request).then(([status, value, failed]) => answer(response, status, value, request, failed), () =>
         answer(response, 500, { error: { code: "server_error", message: "The sample failed." } }, request));
     });
   });

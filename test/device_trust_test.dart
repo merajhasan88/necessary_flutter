@@ -150,6 +150,12 @@ class _Store extends InstallationStore {
   @override
   Future<void> setStepUpReenrolPending(bool pending) async =>
       reenrolPending = pending;
+
+  @override
+  Future<void> clear() async {
+    saved = null;
+    reenrolPending = false;
+  }
 }
 
 class _Collector extends NativeIntegrityCollector {
@@ -632,6 +638,20 @@ void main() {
       expect((await _approve(trust)).headers.keys, contains('X-Step-Up-Proof'));
     },
   );
+
+  test('reset deletes the step-up key with the installation: nothing links '
+      'the next installation to this one', () async {
+    final _DyingStepUpKey key = _DyingStepUpKey();
+    final DeviceTrust trust = _trust(
+      _Backend(),
+      stepUpKey: key,
+      stepUp: const StepUpOptions(),
+    );
+    await trust.start();
+    await trust.reset();
+    expect(key.deleted, 1);
+    expect(trust.stepUpKey, isNull);
+  });
 
   test('re-enrolment with step-up off refuses before sending', () async {
     final _Backend backend = _Backend();

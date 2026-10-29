@@ -7,6 +7,9 @@
   collector 8, iOS collector 5), a scan made for one request, and, when turned on, step-up approval
   with a second key and the app PIN.
 - Sample backends in Python, TypeScript and C#, and the integration guide they are written from.
+- A call that `reset()` or `close()` ends while it runs throws `InterruptedCallException` and keeps
+  nothing; step-up waits for `reenrolStepUp` (`STEPUP_REENROL_PENDING`) whenever your backend does not
+  hold the phone's step-up key.
 - Needs Flutter 3.44 and Dart 3.12 or later: the Android build uses the Kotlin Gradle plugin's
   `kotlin.compilerOptions`, which Flutter supports from 3.44 (AGP 9, built-in Kotlin off). The example
   app needs Flutter 3.47.

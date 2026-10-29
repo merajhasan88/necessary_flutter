@@ -205,8 +205,8 @@ class _TrustPageState extends State<TrustPage> {
       builder: (BuildContext dialog) => AlertDialog(
         title: const Text('A new installation?'),
         content: const Text(
-          'This deletes the installation key and its ID, as a reinstall '
-          'would, and starts again with a new key.',
+          'This deletes the installation key, its ID and the step-up key, '
+          'as a reinstall would, and starts again with new keys.',
         ),
         actions: <Widget>[
           TextButton(
