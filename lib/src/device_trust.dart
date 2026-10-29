@@ -147,9 +147,10 @@ class DeviceTrust {
   // move on to the next, and a call of an earlier one keeps nothing it finds.
   int _generation = 0;
   // A reset's deletion, which every later load waits for; and the
-  // installation ID being saved, which a reset waits for.
+  // installation ID being saved and a re-enrolment, which a reset waits for.
   Future<void>? _resetting;
   Future<void>? _saving;
+  Future<void>? _reenrolling;
   StepUpKeyMetadata? _offeredStepUpKey;
   ReinstallHint? _hint;
   bool _hintRead = false;
@@ -266,6 +267,7 @@ class DeviceTrust {
   Future<void> reset() {
     final Future<InstallationIdentity>? loading = _loading;
     final Future<void>? saving = _saving;
+    final Future<void>? reenrolling = _reenrolling;
     final Future<void>? earlier = _resetting;
     _endCalls();
     _offeredStepUpKey = null;
@@ -275,9 +277,12 @@ class DeviceTrust {
       await earlier;
       // A load or a save still running finishes first, so that nothing it
       // writes outlives the deletion.
+      // So does a re-enrolment: its key, which a backend may already have
+      // taken, is deleted after it, and the marker it writes is cleared.
       await Future.wait(<Future<void>>[
         if (loading != null) loading.then<void>((_) {}, onError: (_) {}),
         if (saving != null) saving.then<void>((_) {}, onError: (_) {}),
+        ?reenrolling,
       ]);
       await _store.clear();
       // The step-up key goes with the installation, as on a reinstall: kept,
@@ -617,7 +622,22 @@ class DeviceTrust {
     required String session,
     Map<String, dynamic> reauthentication = const <String, dynamic>{},
     String reason = 'Confirm your new step-up key',
-  }) async {
+  }) {
+    final Future<Map<String, dynamic>> running = _reenrolStepUp(
+      session,
+      reauthentication,
+      reason,
+    );
+    // reset() waits for it, whatever comes of it.
+    _reenrolling = running.then<void>((_) {}, onError: (_) {});
+    return running;
+  }
+
+  Future<Map<String, dynamic>> _reenrolStepUp(
+    String session,
+    Map<String, dynamic> reauthentication,
+    String reason,
+  ) async {
     final StepUpOptions? options = stepUp;
     if (options == null) {
       throw NativeKeyException(
@@ -633,6 +653,7 @@ class DeviceTrust {
       if (replace) {
         // From here the phone's key and the backend's differ until the
         // backend takes the new one: approvals wait for that.
+        _current(generation);
         await _store.setStepUpReenrolPending(true);
         _current(generation);
         _offeredStepUpKey = null;

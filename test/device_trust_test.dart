@@ -1,6 +1,7 @@
 // DeviceTrust against a backend that answers as the public guide says, with
 // the phone's native side replaced: what it sends, under which session, and
 // what it does about each of the guide's protocol errors.
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart' as crypto;
@@ -281,6 +282,39 @@ class _FlakyStepUpKey extends _StepUpKey {
       factor: factor,
       mode: mode,
       windowSeconds: windowSeconds,
+    );
+  }
+}
+
+/// Answers as [_Backend] does, but holds the answer to [path] until [gate]
+/// completes.
+class _HeldBackend extends _Backend {
+  _HeldBackend(this.path, this.gate);
+
+  final String path;
+  final Completer<void> gate;
+  final Completer<void> asked = Completer<void>();
+
+  @override
+  Future<Map<String, dynamic>> send(
+    String method,
+    String path, {
+    String? encodedBody,
+    String? bearerToken,
+    Map<String, String> headers = const <String, String>{},
+  }) async {
+    if (path == this.path) {
+      if (!asked.isCompleted) {
+        asked.complete();
+      }
+      await gate.future;
+    }
+    return super.send(
+      method,
+      path,
+      encodedBody: encodedBody,
+      bearerToken: bearerToken,
+      headers: headers,
     );
   }
 }
@@ -651,6 +685,43 @@ void main() {
     await trust.reset();
     expect(key.deleted, 1);
     expect(trust.stepUpKey, isNull);
+  });
+
+  test('a reset while a re-enrolment waits for its answer waits for it, then '
+      'deletes its key and its marker', () async {
+    final Completer<void> answer = Completer<void>();
+    final _HeldBackend backend = _HeldBackend(
+      '/v1/installations/stepup-key',
+      answer,
+    );
+    final _Store store = _Store();
+    final _DyingStepUpKey key = _DyingStepUpKey();
+    final DeviceTrust trust = _trust(
+      backend,
+      store: store,
+      stepUpKey: key,
+      stepUp: const StepUpOptions(),
+    );
+    await trust.start();
+    final Future<void> reenrolled = expectLater(
+      trust.reenrolStepUp(
+        session: 'account-session',
+        reauthentication: <String, dynamic>{'password': 'pw'},
+      ),
+      throwsA(isA<InterruptedCallException>()),
+    );
+    await backend.asked.future;
+    expect(store.reenrolPending, isTrue);
+    expect(key.deleted, 1);
+    bool reset = false;
+    final Future<void> resetting = trust.reset().then((_) => reset = true);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(reset, isFalse, reason: 'the reset waits for the re-enrolment');
+    answer.complete();
+    await reenrolled;
+    await resetting;
+    expect(store.reenrolPending, isFalse);
+    expect(key.deleted, 2, reason: 'the re-enrolled key deleted after it');
   });
 
   test('re-enrolment with step-up off refuses before sending', () async {
