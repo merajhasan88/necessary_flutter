@@ -1,24 +1,24 @@
-# Measurements — what the plugin measures on the phone
+# Measurements — what the SDKs measure on the phone
 
-Every measurement the necessary plugin can put in a signed report, field by field: what it is, how the
-plugin measures it, and what a complete answer holds. The plugin never sends a score or a verdict;
+Every measurement a Necessary SDK can put in a signed report, field by field: what it is, how the
+SDK measures it, and what a complete answer holds. Every SDK sends the same report, whatever framework
+your app is built with, and none sends a score or a verdict;
 what a measurement means for a request is your backend's decision. The integration guide
 (`integration_guide.md`, beside this file) is the protocol — how your backend asks for a scan and checks
 the report — and its section 7 is about deciding with these measurements.
 
 ## The contract
 
-The plugin follows the measurement contract published in `contract/report-1/android-8-ios-5/`: the
+Every SDK follows the measurement contract published in `contract/report-1/android-8-ios-5/`: the
 report's schema (`report.schema.json`), the rules a schema cannot state (`RULES.md`), and sample reports
 judged each way (`samples/`). The folder's name is two versions:
 
 - `report-1` is the report's format, version 1 — `version` in every report;
 - `android-8-ios-5` names the lowest versions of the measuring code, the collector, that the contract
-  accepts: 8 on Android and 5 on iOS — `collector_version` in every report. This plugin's collectors are
-  at version 8 on Android and 6 on iOS. These are not Android or iOS versions: the plugin runs on
-  Android 7.0 and later, and on iOS 15 and later.
+  accepts: 8 on Android and 5 on iOS — `collector_version` in every report. These are not Android or iOS versions; your
+  SDK's README says which collector versions it sends and which Android and iOS versions it runs on.
 
-This file describes that contract as this plugin sends it: each heading below is one of its
+This file describes that contract as the SDKs send it: each heading below is one of its
 measurements — a probe — and each row of a table one of its fields.
 
 ## Reading a measurement
@@ -46,12 +46,12 @@ Each probe says when it comes:
 - **every scan**, whether or not your backend asks. Rely on one only by asking for it: until you do, its
   absence or failure does not make a report incomplete;
 - **a personal measurement**, only when your backend lists it in `optional_probes` and your app enables
-  it in the plugin (`personalMeasurements`) — the location only with the person's permission as well.
+  it in its SDK (the SDK's README says how) — the location only with the person's permission as well.
   These identify a person's phone, network or habits (integration guide, section 8).
 
 The columns: *Type* — `true/false`, an integer or a number with its unit, text, a list or a map;
 *Needed* — *yes*, a complete answer carries it; *when checked*, needed when `checked` is true; *yes,
-false*, present and false; empty, sent when the plugin has it.
+false*, present and false; empty, sent when the SDK has it.
 
 ## Apps in a list
 
@@ -259,7 +259,7 @@ The app's native code, and the system libraries it uses, compared in memory with
 that patches code in memory changes bytes there, whatever the tool is called. Three regions: `core` —
 the C library and the Android runtime (`libc.so`, `libart.so`); `ext` — other system libraries that
 hooks aim at (`libc++.so`, `libssl.so`, `libcrypto.so`, `libandroid_runtime.so`, `libbinder.so`); `app`
-— the app's own native code (the Flutter engine and the app's compiled Dart, inside or beside its APK).
+— the app's own native code, inside or beside its APK (in a Flutter app, the Flutter engine and its compiled Dart).
 In each region expected = compared + skipped + unreadable, and `<region>_complete` is true exactly when
 some code was expected and all of it was compared. Any differing byte is code changed while the app
 runs, which should never happen. Memory that Android 10 and later maps execute-only is made readable for
@@ -352,8 +352,8 @@ memory page size.
 
 Whether a VPN is up and an HTTP proxy is set, as Android's connectivity service says: every network is
 asked, not only the default one, since a VPN is a network of its own. Interface names only, never an
-address. Flutter's own requests do not use the system proxy, so the proxy says how the phone is set, not
-which way the report came.
+address. The proxy says how the phone is set, not which way the report came: whether an app's own
+requests follow it depends on how the app makes them (a Flutter app's do not).
 
 **When:** every scan, whether or not your backend asks.
 
@@ -405,7 +405,7 @@ Every app allowed to read the phone's notifications — one-time codes among the
 ### `other_access`
 
 The device-administrator apps that are active, and which of four known remote-control apps are
-installed: AnyDesk, TeamViewer QuickSupport, RustDesk and AirDroid — a list compiled into the plugin,
+installed: AnyDesk, TeamViewer QuickSupport, RustDesk and AirDroid — a list compiled into the SDK,
 which Android lets an app check without seeing other apps.
 
 **When:** your backend asks for it and your app enables it — a personal measurement.
@@ -421,7 +421,7 @@ which Android lets an app check without seeing other apps.
 Whether the app's window is being recorded (Android 15 and later), and how many displays besides the
 phone's own are on: casting, mirroring or an external screen, which it cannot tell apart. A display that
 is off, or private to another app, is not counted. Recording needs `DETECT_SCREEN_RECORDING`, a
-permission the plugin declares for your app; when it cannot be measured it is left out — unknown, not
+permission the SDK declares for your app; when it cannot be measured it is left out — unknown, not
 "no".
 
 **When:** your backend asks for it and your app enables it — a personal measurement.
@@ -436,7 +436,7 @@ permission the plugin declares for your app; when it cannot be measured it is le
 
 The last location the phone already knows — never a fresh fix, never a prompt: the newest fix any
 enabled provider holds, read once per scan, so that both location answers describe the same fix.
-Coordinates come only with the location permission, which your app asks for itself (README). With the
+Coordinates come only with the location permission, which your app asks for itself (your SDK's README says how). With the
 permission and no coordinates the phone holds no location — unless a provider could not be read: it is
 then in `unread`, by its name, and the location may be there.
 
@@ -643,8 +643,8 @@ apart.
 
 Whether a VPN or an HTTP proxy is in use. iOS gives apps no way to ask about a VPN, so a VPN is inferred
 from the network interfaces the system proxy settings are scoped to (`utun`, `ipsec`, `ppp`, `tun`,
-`tap`): a heuristic, so the names come with it. The proxy is read from the system proxy settings.
-Flutter's own requests do not use the system proxy.
+`tap`): a heuristic, so the names come with it. The proxy is read from the system proxy settings;
+whether an app's own requests follow it depends on how the app makes them (a Flutter app's do not).
 
 **When:** every scan, whether or not your backend asks.
 
@@ -679,13 +679,13 @@ background, or before its first window — recording is not measured: it is left
 |---|---|---|---|
 | `recording` | true/false | yes | the screen showing the app is being captured |
 | `external_displays` | integer, count | yes | other screens attached |
-| `recording_status` | one of `unsupported`, `no_permission`, `unavailable` |  | why `recording` is absent: `unavailable`, no window of the app's in the foreground to ask. iOS measures recording on every version the plugin runs on, so `unsupported` never comes from iOS |
+| `recording_status` | one of `unsupported`, `no_permission`, `unavailable` |  | why `recording` is absent: `unavailable`, no window of the app's in the foreground to ask. iOS has measured recording since iOS 11, so `unsupported` never comes from iOS |
 
 ### `location`
 
 The last location the phone already holds — never a fresh fix, never a prompt — read once per scan, so
 that both location answers describe the same fix. Coordinates come only with the location permission,
-which your app asks for itself (README).
+which your app asks for itself (your SDK's README says how).
 
 **When:** your backend asks for it and your app enables it — a personal measurement.
 
@@ -739,5 +739,5 @@ enables it, and `not_enabled` when it does not. No fields.
 
 A fully compromised phone can report anything, and a modified app that holds a registered key signs
 whatever it is given: the signature proves which installation sent a report, not that the phone is
-honest or that the plugin measured what it reports (integration guide, section 9). The measurements raise
+honest or that the SDK measured what it reports (integration guide, section 9). The measurements raise
 the cost of fraud; your backend weighs them with its own business logic.
