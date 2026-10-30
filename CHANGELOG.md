@@ -1,4 +1,4 @@
-## 0.1.0 (unreleased)
+## 0.1.0
 
 - First release: an installation key the plugin never exports (Android Keystore, StrongBox where the
   phone has it; the Secure Enclave on iOS; a software key where the secure hardware declines, and
