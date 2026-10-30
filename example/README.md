@@ -5,18 +5,55 @@ The `necessary` plugin in a working app, against one of its sample backends
 of device trust, in code. The integration guide (`../doc/integration_guide.md`) is the backend side, in
 words.
 
-## Run it
+## Install it
 
-Start a sample backend on your development machine (see `../backend/README.md`), then run the app on an
-Android emulator, which reaches the machine at `10.0.2.2`:
+The sample backends live in the repository, not in the package, so start from a clone.
 
-```sh
-flutter run --dart-define=NECESSARY_BACKEND_URL=http://10.0.2.2:8787
-```
+1. Clone the repository:
 
-On a phone, give the backend's address on your network. Plain HTTP serves a debug build against a local
-sample only; a release build talks HTTPS. To offer several backends, name each:
-`--dart-define='NECESSARY_BACKENDS=Python=https://…;TypeScript=https://…'`.
+   ```sh
+   git clone https://github.com/merajhasan88/necessary_flutter.git
+   cd necessary_flutter
+   ```
+
+2. Start a sample backend on your computer. It answers on `127.0.0.1` only. In Python 3.10 or later:
+
+   ```sh
+   pip install --require-hashes -r backend/python/requirements.txt
+   python3 backend/python/server.py --port 8787 --schema contract/report-1/android-8-ios-5/report.schema.json
+   ```
+
+   The TypeScript and C# samples run the same way; their commands are in
+   [`backend/README.md`](https://github.com/merajhasan88/necessary_flutter/blob/main/backend/README.md).
+3. Run the example app, which needs Flutter 3.47, from `example/`:
+   - **On an Android emulator**, a debug build reaches your computer at `10.0.2.2`:
+
+     ```sh
+     flutter run --dart-define=NECESSARY_BACKEND_URL=http://10.0.2.2:8787
+     ```
+
+   - **On an Android phone** connected by USB with USB debugging on, forward the port first:
+
+     ```sh
+     adb reverse tcp:8787 tcp:8787
+     flutter run --dart-define=NECESSARY_BACKEND_URL=http://127.0.0.1:8787
+     ```
+
+   - **A release build**, on Android or iOS, talks only HTTPS: the plugin refuses an `http://` address in
+     a release build. Put the sample behind an HTTPS proxy on a name the phone can resolve, with a
+     certificate the phone trusts, and give that address:
+
+     ```sh
+     flutter run --release --dart-define=NECESSARY_BACKEND_URL=https://backend.example.com
+     ```
+
+   - **On an iPhone**, open `example/ios/Runner.xcworkspace` in Xcode on a Mac, choose your team under
+     Signing & Capabilities, and run as above with the iPhone connected. An iPhone reaches your computer
+     over your network, so give the address of the HTTPS proxy.
+
+   To offer several backends, name each:
+   `--dart-define='NECESSARY_BACKENDS=Python=https://…;TypeScript=https://…'`. A debug build measures
+   itself as one — `debuggable` in `app_identity` — so judge the measurements on a release build.
 
 ## What the screen shows
 
@@ -35,10 +72,8 @@ of your own backend.
 
 ## Test it on a phone, step by step
 
-Run a sample backend where the phone can reach it (HTTPS for a release build), and build the example
-with its address: `flutter run --release --dart-define=NECESSARY_BACKEND_URL=https://…`. With several
-backends (`NECESSARY_BACKENDS`), tap one at the top and run the steps once for each. Every result line
-carries a ✓ when the backend did what it should, a red ✗ when it did not.
+With several backends (`NECESSARY_BACKENDS`), tap one at the top and run the steps once for each. Every
+result line carries a ✓ when the backend did what it should, a red ✗ when it did not.
 
 1. **Installation → Start.** Expect: `Installation …, proved; step-up on.` On a phone without a screen
    lock, step-up is off: `step-up off here (…)`, and step 7 cannot pass.
@@ -69,7 +104,7 @@ The app PIN belongs to the account, not to the phone. Phones signed in with the 
 PIN set on one unlocks requests on the other, and before any is set, step 9 answers `app_pin_not_set`.
 Sign in with another handle for an account of its own.
 
-### A session copied to another phone
+## A session copied to another phone
 
 A session token copied off one phone must be useless on another. You need two phones running the
 example against the same backend.
@@ -85,6 +120,35 @@ example against the same backend.
 
 If step 4 reads `The session is no longer valid: sign in again`, phone A's session has expired: sign in
 again on phone A and copy it again.
+
+## Measurement by measurement
+
+What each measurement is and every field it carries:
+[`doc/measurements.md`](https://github.com/merajhasan88/necessary_flutter/blob/main/doc/measurements.md).
+On a phone of your own you can watch these change, one at a time: make the change, tap **Scan**, open the
+measurement's row, and change it back afterwards.
+
+| Measurement | Change | The row then shows |
+|---|---|---|
+| `developer_settings` (Android) | Settings → About phone → tap Build number seven times; then Developer options → USB debugging | `developer_options_enabled`, then `adb_enabled`, true |
+| `network` | turn on a VPN app; or set a manual proxy on your Wi-Fi network | `vpn_active` true, the tunnel's interface in `interfaces` (Android) or `scoped_interfaces` (iOS); `http_proxy_configured` true |
+| `local_addresses` | switch between Wi-Fi and mobile data | the phone's own addresses, per interface |
+| `screen_capture` | start the screen recorder (Android 15 and later; on iOS from Control Center); connect an external display | `recording` true; `external_displays` 1 |
+| `location` | tap **Ask for the location permission** and allow it | the `permission`, the coordinates and their `age_seconds` |
+| `mock_location` | Android: Developer options → Select mock location app, and run a mock-location app; iOS: simulate a location from Xcode while the app runs from it | `mock` true |
+| `accessibility` (Android) | Settings → Accessibility → turn on a service such as Select to Speak; or choose another keyboard | the service in `services`; the keyboard in `keyboard` |
+| `notification_access` (Android) | Settings → Notification access (under Special app access) → allow an app | the app in `listeners` |
+| `other_access` (Android) | install AnyDesk, TeamViewer QuickSupport, RustDesk or AirDroid; or make an app a device administrator | the app in `remote_access_apps`; in `device_admins` |
+| `app_identity` | install a build of the example made with other code | other hashes; a debug build reads `debuggable` true |
+| `debug_state` (Android) | in Android Studio, Run → Attach Debugger to Android Process, on a debug build | `debugger_connected` true |
+| `code_signing` (iOS) | run a development build from Xcode | `get_task_allow` true |
+
+The rest — root and jailbreak traces, Frida and other hooking tools, code changed in memory, an emulator
+or the Simulator — needs a device you are allowed to change: never a phone you depend on. On an Android
+emulator `emulator.suspected` is true, and a `userdebug` image shows a debuggable, test-keys build in
+`system_properties` and `root_files`; on the iOS Simulator `simulator.is_simulator` is true. Frida on a
+test device shows in `runtime_maps`, `frida_ports`, `instrumentation_threads`, `exec_mappings` and
+`code_integrity` on Android, and in `dyld_images` and `code_integrity` on iOS.
 
 ## The app side, file by file
 

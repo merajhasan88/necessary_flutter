@@ -4,6 +4,8 @@
   of the screen showing the app: with no window of the app's in the foreground, `recording` is left out
   and `recording_status` says `unavailable`, as on Android.
 - `doc/measurements.md`: every measurement the plugin sends, field by field.
+- The README, like the example's, says how to install the example app, test it step by step, and watch
+  each measurement change one at a time.
 - The README opens with links to the integration guide, the measurements and the measurement contract;
   it and the guide explain the contract folder's name, `android-8-ios-5`: the lowest collector versions
   the contract accepts, not the Android and iOS versions.

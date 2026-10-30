@@ -420,8 +420,9 @@ which Android lets an app check without seeing other apps.
 
 Whether the app's window is being recorded (Android 15 and later), and how many displays besides the
 phone's own are on: casting, mirroring or an external screen, which it cannot tell apart. A display that
-is off, or private to another app, is not counted. Recording needs the `DETECT_SCREEN_RECORDING`
-permission in your app's manifest; when it cannot be measured it is left out — unknown, not "no".
+is off, or private to another app, is not counted. Recording needs `DETECT_SCREEN_RECORDING`, a
+permission the plugin declares for your app; when it cannot be measured it is left out — unknown, not
+"no".
 
 **When:** your backend asks for it and your app enables it — a personal measurement.
 
