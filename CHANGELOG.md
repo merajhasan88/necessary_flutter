@@ -3,6 +3,8 @@
 - `doc/measurements.md` is the same for every Necessary SDK: it says "the SDK" where it said "the
   plugin", and leaves what differs between SDKs — the collector versions, the Android and iOS versions,
   how an app turns on a personal measurement — to each SDK's README.
+- `doc/measurements.md` says what the status `ok` means: measured, never "all clear" — the example
+  app's badge already says *measured*. The report's value stays `ok`.
 
 ## 0.1.2
 

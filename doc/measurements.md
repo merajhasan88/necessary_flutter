@@ -23,9 +23,11 @@ measurements — a probe — and each row of a table one of its fields.
 
 ## Reading a measurement
 
-- **Every probe has a `status`**: `ok`; `error`, with `error` saying why (on Android also `error_type`);
-  `unsupported`, with `reason`; or `not_enabled`, a personal measurement your app does not collect.
-- **`ok` is a claim, not a measurement.** A probe is complete when it answered `ok` and carries every
+- **Every probe has a `status`**: `ok`, measured; `error`, with `error` saying why (on Android also
+  `error_type`); `unsupported`, with `reason`; or `not_enabled`, a personal measurement your app does
+  not collect. **`ok` means measured, never "all clear"**: the phone took the measurement, and what it
+  found is in the fields — the example app shows it as *measured*.
+- **`ok` says measured; the fields say how much.** A probe is complete when it answered `ok` and carries every
   field marked *yes* below — for `code_integrity` with `checked` true, every field marked *when checked*
   as well, and for a list of apps `truncated` present and false (*yes, false*).
 - **`unread`** names the parts of an `ok` probe that could not be read, each with why:
