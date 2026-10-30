@@ -5,6 +5,10 @@
   how an app turns on a personal measurement — to each SDK's README.
 - `doc/measurements.md` says what the status `ok` means: measured, never "all clear" — the example
   app's badge already says *measured*. The report's value stays `ok`.
+- The measurements and the integration guide, checked against the code: `root_shell` tries `command -v
+  su`, then `which su`; Android's `app` region is what is mapped from the APK plus the libraries the SDK
+  names beside it; the iOS jailbreak paths are listed in full; the guide cites `RULES.md` sections 2
+  and 7, and `RULES.md` says `ok` means measured.
 
 ## 0.1.2
 
