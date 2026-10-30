@@ -504,7 +504,11 @@ def signed_bytes(jwk, payload_b64, signature_b64):
 report's schema (`report.schema.json`: every measurement's fields with their types, units and bounds),
 the rules a schema cannot state (`RULES.md`: when a measurement is complete, how its figures add up,
 what contradicts itself, how versions change), and sample reports judged each way (`samples/`). The
-tables below summarise it.
+folder's name is two versions: `report-1` is the report's format, version 1, and `android-8-ios-5` the
+lowest versions of the plugins' measuring code — their collectors — that the contract accepts: 8 on
+Android and 5 on iOS (`collector_version`), not Android 8 or iOS 5, the operating systems. Every
+measurement and field is described in `measurements.md`, beside this guide; the tables below summarise
+them.
 
 Each entry in `probe_results` has a `status`: `ok`, `error` (with `error`, and on Android `error_type`),
 `unsupported` (with `reason`), or `not_enabled` for a personal measurement this app does not collect.
@@ -555,7 +559,7 @@ or keep their scans apart as older evidence.
 | `environment` | libraries injected through the environment | `dyld_insert_libraries` |
 | `simulator` | the simulator, and the hardware model | `is_simulator`, `model` |
 | `code_integrity` | the app's code in memory compared with its file, image by image | `checked`, `app_compared_bytes`, `app_diff_bytes`, `app_libs_diff`, `diffed_libs`; from version 5 the coverage: `app_images_expected` (the app's images loaded), `app_images_compared`, `app_images_unreadable`, `app_images_skipped`, `app_expected_bytes`, `app_unreadable_bytes`, `app_skipped_bytes`, `app_complete`, `main_executable_compared`, `app_images_not_compared` (each image not compared, by its path in the app, with why); `system_images_unreadable` |
-| `device` | the OS version and build, and the model | `os_version`, `os_build`, `model_identifier` |
+| `device` | the OS version and build, the model, the memory page size | `os_version`, `os_build`, `model_identifier`, `page_size` |
 | `network` | a VPN, inferred from the interfaces the proxy settings are scoped to — a heuristic, so the names come with it; an HTTP proxy | `vpn_active`, `http_proxy_configured`, `scoped_interfaces` |
 
 - **`apk_sha256` is the base APK's alone.** Installs of one release with different feature, ABI or
@@ -723,14 +727,15 @@ your app asks.
 | `accessibility` | the Accessibility services that are on, and the keyboard in use | `services`, `keyboard`, `settings_only`, `truncated` | Android |
 | `notification_access` | the apps allowed to read notifications, one-time codes among them | `listeners`, `truncated` | Android |
 | `other_access` | device-administrator apps, and known remote-control apps installed | `device_admins`, `remote_access_apps`, `truncated` | Android |
-| `screen_capture` | the screen being recorded, mirrored or cast | `recording`, `external_displays`; Android also `recording_status` | both |
+| `screen_capture` | the screen being recorded, mirrored or cast | `recording`, `external_displays`, `recording_status` | both |
 | `location` | the last location the phone already knows — never a fresh fix, never a prompt | `permission` (`precise`, `approximate`, `none`), `latitude`, `longitude`, `accuracy_m`, `age_seconds`, `fix_time`; Android also `provider` | both |
 | `mock_location` | whether that location was faked | `permission`, `mock`, `age_seconds`, `fix_time`; iOS also `accessory` | both |
 
 - A list of apps holds at most 32, each with `package` and `service`, and with `system` and `installer`
   where Android lets the app see them; `truncated` is true when the phone had more.
-- On Android, `recording` exists from Android 15; when it is missing, `recording_status` says why
-  (`unsupported`, `no_permission`, `unavailable`).
+- `recording` exists on Android from Android 15, and on iOS while the app has a window in the
+  foreground; when it is missing, `recording_status` says why (`unsupported`, `no_permission`,
+  `unavailable` — from iOS only `unavailable`).
 - iOS shows an app no other app: `accessibility`, `notification_access` and `other_access` answer
   `unsupported` there.
 - From plugin versions Android 8 and iOS 5 both location answers describe one fix, read once per scan,

@@ -4,20 +4,34 @@ Device trust for Flutter apps on Android and iOS. The plugin gives your app a ke
 in the phone's keystore, in secure hardware where the phone has it and in software where it does not —
 signed measurements of the phone and of the app running on it, and a proof on each request your app
 sends — and, if you turn them on, a second key the person must unlock to approve a request, and a
-PIN your backend checks. **It never scores and never decides: your backend does.** The integration guide
-(`doc/integration_guide.md`) is the protocol: what the plugin sends and how your backend checks it.
-The example app (`example/`) puts every piece below in a working app, against the sample backends in
-[`backend/`](https://github.com/merajhasan88/necessary_flutter/tree/main/backend) (in the
-repository, not the package); its README walks through testing it on a phone, step by step.
+PIN your backend checks. **It never scores and never decides: your backend does.**
 
 Android 7.0 (API 24) and later; iOS 15 and later; Flutter 3.44 (Dart 3.12) and later — the example app
-needs Flutter 3.47. Status: 0.1.0, not yet published.
+needs Flutter 3.47.
+
+## Documentation
+
+- [The integration guide](https://github.com/merajhasan88/necessary_flutter/blob/main/doc/integration_guide.md)
+  (`doc/integration_guide.md`) — the protocol: what the plugin sends, and how your backend checks it.
+- [The measurements](https://github.com/merajhasan88/necessary_flutter/blob/main/doc/measurements.md)
+  (`doc/measurements.md`) — everything the plugin measures on the phone, field by field: what each
+  measurement is, how it is taken, and what a complete answer holds.
+- [The measurement contract](https://github.com/merajhasan88/necessary_flutter/tree/main/contract/report-1/android-8-ios-5)
+  (`contract/report-1/android-8-ios-5/`) — the report's schema, its rules and sample reports. The
+  folder's name is two versions: `report-1` is the report's format, and `android-8-ios-5` the lowest
+  versions of the measuring code, the collector, that the contract accepts — 8 on Android and 5 on iOS
+  (`collector_version`; this plugin's are 8 and 6). They are not the Android or iOS versions the plugin
+  runs on, which are above.
+- [The example app](https://github.com/merajhasan88/necessary_flutter/tree/main/example)
+  (`example/`) puts every piece below in a working app, against the
+  [sample backends](https://github.com/merajhasan88/necessary_flutter/tree/main/backend)
+  (in the repository, not the package); its README walks through testing it on a phone, step by step.
 
 ## Install
 
 ```yaml
 dependencies:
-  necessary: ^0.1.0
+  necessary: ^0.1.1
 ```
 
 The plugin declares what its own features need. Your app adds only what you choose to use:
@@ -265,15 +279,6 @@ registration's `key_security` is the phone's own word, and where the secure hard
 Simulator, some configurations — the key is a software key, which a compromised phone can copy. A fully
 compromised phone can falsify what it measures and can use a genuine key to sign what it likes: the
 measurements raise the cost of fraud, and your backend weighs them with its own business logic.
-
-## Tested on
-
-The example app with the sample backends, on an OPPO CPH2083 (Android 9) and an iPhone 7 (iOS 15.8.5,
-installed through TrollStore); the plugin built into fresh apps on Flutter 3.44.0 and 3.47.2 (Android).
-Not yet tested: screen-recording detection on Android 15 and later; phones with 16 KB memory pages; an
-App Store or TestFlight build; iOS screen protection when a window is replaced, with several windows
-(iPad), or when the Flutter engine is torn down. Until your own release has run there, read what those paths report as not measured, and never
-treat a phone's first, unfamiliar readings as fraud.
 
 ## Licence
 

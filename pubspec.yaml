@@ -3,7 +3,7 @@ description: >-
   Device trust for Flutter apps: a device-bound key the plugin never exports,
   signed measurements of the phone and the app, request proofs. Your backend
   decides.
-version: 0.1.0
+version: 0.1.1
 repository: https://github.com/merajhasan88/necessary_flutter
 issue_tracker: https://github.com/merajhasan88/necessary_flutter/issues
 topics:

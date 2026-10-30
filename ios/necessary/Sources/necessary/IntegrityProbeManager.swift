@@ -26,11 +26,14 @@ final class IntegrityProbeManager {
     /// coverage image by image - compared, unreadable or skipped, each one not
     /// compared named with why - and whether the main executable was compared;
     /// and one location read answers both location measurements, which carry
-    /// its fix_time.
+    /// its fix_time. 6 sends the memory page size with `device`, and asks
+    /// screen capture of the screen showing the app: with no window scene in
+    /// the foreground, recording is not measured and `recording_status` says
+    /// `unavailable`, as on Android.
     /// What the reads mean - the coverage tally, the text span's checks, the
     /// one location read - is in ProbeReads.swift, which needs no Apple-only
     /// framework and so can be tested on any Swift toolchain.
-    private static let collectorVersion = 5
+    private static let collectorVersion = 6
     /// Sent with every scan whether or not the server asked, like
     /// code_integrity below, so no older client breaks.
     private static let volunteeredProbes = ["device", "network"]
@@ -164,15 +167,18 @@ final class IntegrityProbeManager {
 
     // MARK: - Probes
 
-    /// The OS version and build, and the hardware model.
+    /// The OS version and build, the hardware model, and the memory page size.
     /// iOS has no separate security patch level: its fixes ship as OS
-    /// versions, and the build tells a Rapid Security Response apart.
+    /// versions, and the build tells a Rapid Security Response apart. The page
+    /// size (collector 6) is 16 KiB on Apple's 64-bit phones; a backend that
+    /// keeps a record of a release's runtime keeps one per page size.
     private func probeDevice() -> [String: Any] {
         return [
             "status": "ok",
             "os_version": UIDeviceOSVersion(),
             "os_build": osBuild(),
             "model_identifier": deviceModelIdentifier(),
+            "page_size": Int(getpagesize()),
         ]
     }
 
@@ -182,15 +188,24 @@ final class IntegrityProbeManager {
         return Thread.isMainThread ? read() : DispatchQueue.main.sync(execute: read)
     }
 
-    /// Whether the screen is being recorded, mirrored or sent to AirPlay
-    /// (`UIScreen.isCaptured`), and how many other screens are attached.
+    /// Whether the screen showing the app is being recorded, mirrored or sent
+    /// to AirPlay (`UIScreen.isCaptured`, asked of the screen of each window
+    /// scene in the foreground), and how many other screens are attached.
+    /// With no window scene in the foreground - the app in the background, or
+    /// before its first window - there is no screen of the app's to ask:
+    /// ProbeReads.screenCapture leaves recording out and says why
+    /// (collector 6).
     private func probeScreenCapture() -> [String: Any] {
         return onMain {
-            [
-                "status": "ok",
-                "recording": UIScreen.main.isCaptured,
-                "external_displays": max(0, UIScreen.screens.count - 1),
-            ]
+            let shown = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .filter {
+                    $0.activationState == .foregroundActive
+                        || $0.activationState == .foregroundInactive
+                }
+            return ProbeReads.screenCapture(
+                captured: shown.isEmpty ? nil : shown.contains { $0.screen.isCaptured },
+                otherScreens: UIScreen.screens.count - 1)
         }
     }
 

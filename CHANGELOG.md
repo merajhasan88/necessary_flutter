@@ -1,3 +1,13 @@
+## 0.1.1
+
+- iOS: the collector, now version 6, sends the memory page size with `device`, and asks screen capture
+  of the screen showing the app: with no window of the app's in the foreground, `recording` is left out
+  and `recording_status` says `unavailable`, as on Android.
+- `doc/measurements.md`: every measurement the plugin sends, field by field.
+- The README opens with links to the integration guide, the measurements and the measurement contract;
+  it and the guide explain the contract folder's name, `android-8-ios-5`: the lowest collector versions
+  the contract accepts, not the Android and iOS versions.
+
 ## 0.1.0
 
 - First release: an installation key the plugin never exports (Android Keystore, StrongBox where the

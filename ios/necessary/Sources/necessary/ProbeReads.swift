@@ -245,4 +245,19 @@ enum ProbeReads {
         result["fix_time"] = Int(fix.timestamp.timeIntervalSince1970)
         return result
     }
+
+    /// Screen capture (collector 6): `recording` when a screen showing the
+    /// app's window could be asked. With none - the app in the background, or
+    /// before its first window - recording is not measured, never "no", and
+    /// `recording_status` says why: `unavailable`, as on Android with no window
+    /// to ask. The other screens attached are counted either way.
+    static func screenCapture(captured: Bool?, otherScreens: Int) -> [String: Any] {
+        var result: [String: Any] = ["status": "ok", "external_displays": max(0, otherScreens)]
+        if let captured = captured {
+            result["recording"] = captured
+        } else {
+            result["recording_status"] = "unavailable"
+        }
+        return result
+    }
 }
