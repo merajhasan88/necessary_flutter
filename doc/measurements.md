@@ -137,7 +137,7 @@ is not allowed to see reads as absent; a check that failed is in `unread`, by it
 
 ### `root_shell`
 
-Whether `su` resolves from the app's own shell (`command -v su`). A lookup that could not run, or did
+Whether `su` resolves from the app's own shell (`command -v su`, then `which su`). A lookup that could not run, or did
 not finish, answers `error`: never "no su".
 
 **When:** your backend asks for it.
@@ -261,7 +261,8 @@ The app's native code, and the system libraries it uses, compared in memory with
 that patches code in memory changes bytes there, whatever the tool is called. Three regions: `core` —
 the C library and the Android runtime (`libc.so`, `libart.so`); `ext` — other system libraries that
 hooks aim at (`libc++.so`, `libssl.so`, `libcrypto.so`, `libandroid_runtime.so`, `libbinder.so`); `app`
-— the app's own native code, inside or beside its APK (in a Flutter app, the Flutter engine and its compiled Dart).
+— the app's own native code: what is mapped from its APK, and beside the APK the libraries the SDK
+names (the Flutter SDK: the Flutter engine, `libflutter.so`, and the compiled Dart, `libapp.so`).
 In each region expected = compared + skipped + unreadable, and `<region>_complete` is true exactly when
 some code was expected and all of it was compared. Any differing byte is code changed while the app
 runs, which should never happen. Memory that Android 10 and later maps execute-only is made readable for
@@ -524,7 +525,8 @@ A debugger tracing the app's process: the kernel's `P_TRACED` flag.
 ### `jailbreak_files`
 
 Whether 20 known jailbreak paths exist: the package managers (Cydia, Sileo, Zebra), Substrate and
-ElleKit, a shell and SSH, apt's folders, and the rootless `/var/jb` layout of current jailbreaks. A
+ElleKit, a shell and SSH, apt's and Cydia's folders, `/private/var/stash`, the marker files of the
+Electra, Taurine and unc0ver jailbreaks, and the rootless `/var/jb` layout of current jailbreaks. A
 clean phone's sandbox hides most of them, so a path the app cannot see reads as absent. On the
 Simulator, whose files are the Mac's, it answers `unsupported`.
 

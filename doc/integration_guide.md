@@ -157,7 +157,7 @@ Your backend, in this order, refusing at the first failure:
 10. Marks the challenge used, in the same transaction.
 
 Only then read the measurements — and keep the signed bytes, or their SHA-256, with what you decided.
-Read them first by the contract's rules (`RULES.md`, section 6): a report whose figures contradict each
+Read them first by the contract's rules (`RULES.md`, sections 2 and 7): a report whose figures contradict each
 other is not a measurement, clean or otherwise; one with a requested measurement failed, unread or
 without its fields is incomplete — ask again rather than read it as clean; only then do your own rules
 weigh what it found. Decide deliberately what an incomplete report may still do.

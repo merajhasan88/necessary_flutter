@@ -29,10 +29,10 @@ old a location may be, when to refuse. Nothing here scores anything.
 
 ## 2. What counts as a measurement
 
-- Each measurement has a `status`: `ok`; `error`, with `error` saying why (Android may add
+- Each measurement has a `status`: `ok`, measured; `error`, with `error` saying why (Android may add
   `error_type`); `unsupported`, with `reason`; or `not_enabled`, a personal measurement this app does
-  not collect.
-- **`ok` is a claim, not a measurement.** A measurement is complete when it answered `ok` and carries
+  not collect. `ok` means measured, never "all clear": what was found is in the fields.
+- **`ok` says measured; the fields say how much.** A measurement is complete when it answered `ok` and carries
   every field its `x-complete-when-ok` lists — for `code_integrity` with `checked` true, every field of
   `x-complete-when-checked` too, and for a personal measurement every one of its `x-parts`.
 - **`unread`** names the parts an `ok` measurement could not read, each with why: at most 64, a name
