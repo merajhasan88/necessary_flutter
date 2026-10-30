@@ -218,7 +218,7 @@ const List<MeasurementInfo> iosMeasurements = <MeasurementInfo>[
   MeasurementInfo(
     'device',
     'Device',
-    'The OS version and build, and the model.',
+    'The OS version and build, the model and the memory page size.',
     MeasurementGroup.device,
   ),
   MeasurementInfo(
