@@ -1,3 +1,10 @@
+## 0.1.2
+
+- The product is named Necessary: the package's description, the README, the integration guide and the
+  measurement contract's titles say "Necessary" or "device integrity" where they said "device trust".
+  No change to the code, the API (the class is still `DeviceTrust`), the report or the contract's rules;
+  the schema's `$id` stays as it was.
+
 ## 0.1.1
 
 - iOS: the collector, now version 6, sends the memory page size with `device`, and asks screen capture

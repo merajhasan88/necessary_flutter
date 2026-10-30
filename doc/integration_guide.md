@@ -1,6 +1,6 @@
-# Device Trust — what the app sends, and how your backend checks it
+# Necessary — what the app sends, and how your backend checks it
 
-The Device Trust plugins (Android, iOS, Flutter, React Native, .NET) are open source. They give your app
+The Necessary plugins (Android, iOS, Flutter, React Native, .NET) are open source. They give your app
 a key they never export (section 1 says where the phone keeps it), measurements of the phone and of the
 app running on it, and — if
 you turn them on — a second key that the person must unlock, and a PIN your backend checks, to approve

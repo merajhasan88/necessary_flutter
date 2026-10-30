@@ -4,7 +4,7 @@ library;
 
 import 'errors.dart';
 
-/// What the client does about a refusal from the device-trust API: the
+/// What the client does about a refusal from your backend's API: the
 /// protocol errors of the integration guide's section 4, each acted on
 /// once. Any other refusal goes to the app as it came.
 enum ProtocolStep { askAgain, proveAgain, registerAgain, waitThenRetry, stop }

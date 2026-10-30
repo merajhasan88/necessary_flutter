@@ -2,7 +2,7 @@
 
 The `necessary` plugin in a working app, against one of its sample backends
 ([`backend/`](https://github.com/merajhasan88/necessary_flutter/tree/main/backend) in the repository): the app side
-of device trust, in code. The integration guide (`../doc/integration_guide.md`) is the backend side, in
+of device integrity, in code. The integration guide (`../doc/integration_guide.md`) is the backend side, in
 words.
 
 ## Install it

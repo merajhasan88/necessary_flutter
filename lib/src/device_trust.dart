@@ -72,8 +72,8 @@ class ScanResult {
 }
 
 class DeviceTrust {
-  /// Device trust over JSON and HTTPS under [baseUrl], the plugin's default
-  /// API (the public guide, section 4).
+  /// Talks to your backend over JSON and HTTPS under [baseUrl], the plugin's
+  /// default API (the public guide, section 4).
   DeviceTrust({
     required String baseUrl,
     Set<PersonalMeasurement> personalMeasurements =

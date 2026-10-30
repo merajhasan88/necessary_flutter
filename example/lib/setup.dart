@@ -20,7 +20,7 @@ final Map<String, String> backends = _backendList.isEmpty
                 .trim(),
       };
 
-/// Device trust against the backend at [baseUrl].
+/// A [DeviceTrust] for the backend at [baseUrl].
 DeviceTrust setUpDeviceTrust(
   String baseUrl, {
   Set<PersonalMeasurement> personalMeasurements = const <PersonalMeasurement>{},

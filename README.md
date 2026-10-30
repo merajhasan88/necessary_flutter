@@ -1,6 +1,6 @@
 # necessary
 
-Device trust for Flutter apps on Android and iOS. The plugin gives your app a key it never exports — made
+Device integrity for Flutter apps on Android and iOS. The plugin gives your app a key it never exports — made
 in the phone's keystore, in secure hardware where the phone has it and in software where it does not —
 signed measurements of the phone and of the app running on it, and a proof on each request your app
 sends — and, if you turn them on, a second key the person must unlock to approve a request, and a
@@ -32,7 +32,7 @@ needs Flutter 3.47.
 
 ```yaml
 dependencies:
-  necessary: ^0.1.1
+  necessary: ^0.1.2
 ```
 
 The plugin declares what its own features need. Your app adds only what you choose to use:

@@ -1,6 +1,6 @@
 # The measurement contract: report format 1, Android collector 8, iOS collector 5
 
-What a Device Trust collector sends in its signed integrity report, and how to read it. Three parts,
+What a Necessary collector sends in its signed integrity report, and how to read it. Three parts,
 all in this folder:
 
 - `report.schema.json` — the report's shape (JSON Schema 2020-12): every measurement, field, type,

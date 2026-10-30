@@ -1,4 +1,4 @@
-/// Device trust for Flutter apps: the client half of the public integration
+/// Device integrity for Flutter apps: the client half of the public integration
 /// guide. A device-bound key the plugin never exports, signed measurements of
 /// the phone and the app, and request proofs; the app's backend decides what
 /// they mean.

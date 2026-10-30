@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:devicetrust:integrity-report:1:android-8:ios-5",
-  "title": "Device Trust integrity report, format 1",
+  "title": "Necessary integrity report, format 1",
   "description": "The JSON a collector signs (report_payload, decoded) under evidence contracts Android 8 and iOS 5. Well-formedness only: whether a measurement is complete is in the x- annotations and RULES.md.",
   "x-contract": {
     "report_format": 1,
