@@ -1,32 +1,32 @@
-## Unreleased
+## 0.1.3
 
-- `doc/measurements.md` bounds Android's `app` region plainly: the native code mapped from the APK and
-  the libraries the SDK names beside it; a build that extracts its native libraries leaves those under
-  other names outside it, and `app_complete` is complete over that selection, not over all of the app's
-  code.
-- `reset()` and `close()` hold for every call: `signRequest` and `setAppPin` end with
-  `InterruptedCallException` when the installation was reset meanwhile, never handing out a proof or an
-  answer of the installation that is gone; every persistent write and key change — the step-up marker, a
-  step-up key being made or replaced — is refused once a reset has begun and waited for when it began
-  before, so none outlives the reset. A step-up key the keystore will not delete now fails `reset()`
-  (`KEY_DELETE_FAILED`), the installation itself gone, instead of being passed over.
-- Android: the step-up key is deleted only when Android says it can never sign again
-  (`KeyPermanentlyInvalidatedException`). A lookup that cannot establish whether it is usable — on
-  Android 9 a binder error also reads as "no key entry", and a failed key-characteristics query surfaces
-  as `UnrecoverableKeyException` — used to delete it too; the key is now kept and the approval fails with
-  the new `STEPUP_KEY_UNAVAILABLE`, which an app may retry. `reenrolStepUp` replaces such a key, as it
-  replaces an invalidated one.
+- iOS (collector 7): an app image whose code the App Store encrypted on disk is no longer compared with
+  its file — the file holds encrypted bytes and memory the decrypted ones, so a genuine App Store
+  install would have differed in every encrypted byte. Such an image is skipped with its `__text`
+  bytes and named in `app_images_not_compared`, so `app_complete` is false; builds stored in the clear
+  are compared as before.
 - Android (collector 9): the code comparison reads the memory map once and takes every region from that
   snapshot. It used to reopen the map for each library, and a failed reopen counted as "not loaded", so a
   region could read complete with a target unmeasured; a map that cannot be read now answers `checked`
   false with `reason` `maps_unreadable` (or `maps_empty`, `no_target_mapped`). And one comparison runs
   at a time in the process, whichever engine or thread asks: a comparison makes execute-only pages
   readable while it reads them, and two at once could read a page the other had just locked again.
-- iOS (collector 7): an app image whose code the App Store encrypted on disk is no longer compared with
-  its file — the file holds encrypted bytes and memory the decrypted ones, so a genuine App Store
-  install would have differed in every encrypted byte. Such an image is skipped with its `__text`
-  bytes and named in `app_images_not_compared`, so `app_complete` is false; builds stored in the clear
-  are compared as before.
+- Android: the step-up key is deleted only when Android says it can never sign again
+  (`KeyPermanentlyInvalidatedException`). A lookup that cannot establish whether it is usable — on
+  Android 9 a binder error also reads as "no key entry", and a failed key-characteristics query surfaces
+  as `UnrecoverableKeyException` — used to delete it too; the key is now kept and the approval fails with
+  the new `STEPUP_KEY_UNAVAILABLE`, which an app may retry. `reenrolStepUp` replaces such a key, as it
+  replaces an invalidated one.
+- `reset()` and `close()` hold for every call: `signRequest` and `setAppPin` end with
+  `InterruptedCallException` when the installation was reset meanwhile, never handing out a proof or an
+  answer of the installation that is gone; every persistent write and key change — the step-up marker, a
+  step-up key being made or replaced — is refused once a reset has begun and waited for when it began
+  before, so none outlives the reset. A step-up key the keystore will not delete now fails `reset()`
+  (`KEY_DELETE_FAILED`), the installation itself gone, instead of being passed over.
+- `doc/measurements.md` bounds Android's `app` region plainly: the native code mapped from the APK and
+  the libraries the SDK names beside it; a build that extracts its native libraries leaves those under
+  other names outside it, and `app_complete` is complete over that selection, not over all of the app's
+  code.
 - `doc/measurements.md` is the same for every Necessary SDK: it says "the SDK" where it said "the
   plugin", and leaves what differs between SDKs — the collector versions, the Android and iOS versions,
   how an app turns on a personal measurement — to each SDK's README.

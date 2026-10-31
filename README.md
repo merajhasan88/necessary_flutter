@@ -32,7 +32,7 @@ needs Flutter 3.47.
 
 ```yaml
 dependencies:
-  necessary: ^0.1.2
+  necessary: ^0.1.3
 ```
 
 The plugin declares what its own features need. Your app adds only what you choose to use:
