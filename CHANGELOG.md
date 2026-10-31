@@ -2,7 +2,9 @@
 
 - Android: every failure says what failed beneath it. A native call's `NativeKeyException` message ends
   with `[cause: …]` — each failure beneath it, its kind and its words, down to the keystore's own
-  answer, and from Android 13 the keystore's numeric code and whether it deems the failure transient.
+  answer, and from Android 13 the keystore's numeric code and whether it deems the failure transient,
+  wherever Android passes the keystore's exception on (it drops it from a permanently invalidated key's
+  lookup).
   Before, a message carried one level of cause at most (on Android 9 a failed key lookup read only
   "Failed to obtain information about key", the keystore's answer lost) and several carried none — short
   of the release review's item 4, which asked to keep "the original cause chain and available error
@@ -13,6 +15,11 @@
   `NATIVE_STEPUP_ERROR` with its causes, as every other channel does, instead of Flutter's generic error.
 - Android: `network` puts a listing of the interfaces that failed — whole, or for one interface — in
   `unread` as `interfaces`, where an empty or short list used to read as "no such interface".
+- Android 9 and 10: a step-up approval that waits for the system's passcode screen can no longer hold
+  every later one at `STEPUP_BUSY`. When the screen fails to open, the approval fails with its causes
+  and nothing waits; when the activity that asked is gone for good, the approval ends as
+  `STEPUP_CANCELLED`, as for a replaced activity on newer Android. A configuration change still lets
+  the recreated activity receive the answer.
 
 ## 0.1.4
 

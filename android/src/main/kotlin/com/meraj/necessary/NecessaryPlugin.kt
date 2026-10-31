@@ -82,12 +82,23 @@ class NecessaryPlugin :
         screenGuard.reattach(windowState(binding.activity))?.let { applyScreen(binding.activity, it) }
     }
 
-    override fun onDetachedFromActivityForConfigChanges() = onDetachedFromActivity()
+    // A recreated activity still receives the confirm-credential result, so a
+    // step-up waiting for it keeps waiting.
+    override fun onDetachedFromActivityForConfigChanges() = detachFromActivity()
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) =
         onAttachedToActivity(binding)
 
+    // Gone for good: a step-up waiting for the confirm-credential result would
+    // never hear it, and would hold every later approval at STEPUP_BUSY.
     override fun onDetachedFromActivity() {
+        detachFromActivity()
+        if (::stepUpKeys.isInitialized) {
+            stepUpKeys.cancelPendingConfirmation()
+        }
+    }
+
+    private fun detachFromActivity() {
         activityBinding?.removeActivityResultListener(this)
         activityBinding?.removeRequestPermissionsResultListener(this)
         activityBinding = null

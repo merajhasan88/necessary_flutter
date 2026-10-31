@@ -358,7 +358,32 @@ class StepUpKeyManager(private val context: Context) {
             "Set a screen lock (PIN, pattern or password) to use step-up.",
         )
         pendingConfirm = PendingConfirm(entry, payload, done)
-        activity.startActivityForResult(intent, CONFIRM_CREDENTIAL_REQUEST)
+        try {
+            activity.startActivityForResult(intent, CONFIRM_CREDENTIAL_REQUEST)
+        } catch (error: RuntimeException) {
+            // The confirmation never opened: nothing may wait for it, or every
+            // later approval would answer STEPUP_BUSY. The caller says why.
+            pendingConfirm = null
+            throw error
+        }
+    }
+
+    /**
+     * The activity that showed the confirm-credential screen is gone for good
+     * (not recreated for a configuration change): its answer will never come,
+     * so the approval ends as a cancelled one, and the next can be asked.
+     */
+    fun cancelPendingConfirmation() {
+        val pending = pendingConfirm ?: return
+        pendingConfirm = null
+        pending.done(
+            Result.failure(
+                InstallationKeyFailure(
+                    "STEPUP_CANCELLED",
+                    "The passcode prompt was cancelled: the screen that asked for it is gone.",
+                ),
+            ),
+        )
     }
 
     private fun buildPrompt(
