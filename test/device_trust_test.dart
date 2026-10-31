@@ -247,6 +247,34 @@ class _DyingStepUpKey extends _StepUpKey {
   Future<void> deleteKey() async => deleted += 1;
 }
 
+/// A key the keystore cannot vouch for (STEPUP_KEY_UNAVAILABLE) until it is
+/// replaced.
+class _UnavailableStepUpKey extends _StepUpKey {
+  int deleted = 0;
+
+  @override
+  Future<StepUpKeyMetadata> getOrCreateKey({
+    required String factor,
+    required String mode,
+    required int windowSeconds,
+  }) async {
+    if (deleted == 0) {
+      throw NativeKeyException(
+        'STEPUP_KEY_UNAVAILABLE',
+        'the keystore could not say whether the key is usable',
+      );
+    }
+    return super.getOrCreateKey(
+      factor: factor,
+      mode: mode,
+      windowSeconds: windowSeconds,
+    );
+  }
+
+  @override
+  Future<void> deleteKey() async => deleted += 1;
+}
+
 /// A dying key whose first prompt after its replacement is cancelled.
 class _CancelledStepUpKey extends _DyingStepUpKey {
   bool cancelled = false;
@@ -523,6 +551,29 @@ void main() {
       stepUp: true,
     );
     expect(approval.headers.keys, contains('X-Step-Up-Proof'));
+  });
+
+  test('a step-up key the keystore cannot vouch for is kept at start, and '
+      'replaced only by a re-enrolment', () async {
+    final _Backend backend = _Backend();
+    final _UnavailableStepUpKey key = _UnavailableStepUpKey();
+    final DeviceTrust trust = _trust(
+      backend,
+      stepUpKey: key,
+      stepUp: const StepUpOptions(),
+    );
+    await trust.start();
+    expect(trust.stepUpUnavailable?.code, 'STEPUP_KEY_UNAVAILABLE');
+    expect(key.deleted, 0);
+    expect(
+      await trust.reenrolStepUp(
+        session: 'account-session',
+        reauthentication: <String, dynamic>{'password': 'pw'},
+      ),
+      containsPair('stepup_key_registered', true),
+    );
+    expect(key.deleted, 1);
+    expect(trust.stepUpUnavailable, isNull);
   });
 
   test('a re-enrolment the backend refused leaves approvals waiting for it, '

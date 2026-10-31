@@ -1,5 +1,11 @@
 ## Unreleased
 
+- Android: the step-up key is deleted only when Android says it can never sign again
+  (`KeyPermanentlyInvalidatedException`). A lookup that cannot establish whether it is usable — on
+  Android 9 a binder error also reads as "no key entry", and a failed key-characteristics query surfaces
+  as `UnrecoverableKeyException` — used to delete it too; the key is now kept and the approval fails with
+  the new `STEPUP_KEY_UNAVAILABLE`, which an app may retry. `reenrolStepUp` replaces such a key, as it
+  replaces an invalidated one.
 - Android (collector 9): the code comparison reads the memory map once and takes every region from that
   snapshot. It used to reopen the map for each library, and a failed reopen counted as "not loaded", so a
   region could read complete with a target unmeasured; a map that cannot be read now answers `checked`

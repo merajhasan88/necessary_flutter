@@ -553,53 +553,72 @@ class StepUpKeyManager(private val context: Context) {
     }
 
     /**
-     * Loads the stored step-up key, removing it if it has died in place.
-     *
-     * Removing the screen lock (or, for a biometric key, changing the enrolled
-     * biometrics) invalidates an auth-bound key. On an Android 9 phone the
-     * alias survived while the entry could no longer be loaded, which the app
-     * used to report only as a generic KEY_LOOKUP_FAILED and never recovered
-     * from; newer keystores keep the entry and refuse initSign.
-     * Either way the key is dead: delete it and report STEPUP_KEY_INVALIDATED.
-     * Any other lookup failure is reported with its cause and the key is kept.
+     * Loads the stored step-up key. Removing the screen lock (or, for a
+     * biometric key, changing the enrolled biometrics) invalidates an
+     * auth-bound key: Android says so when a signature starts
+     * (KeyPermanentlyInvalidatedException), and only then is the key deleted
+     * and STEPUP_KEY_INVALIDATED reported. A lookup that cannot establish
+     * whether the key is usable keeps it: STEPUP_KEY_UNAVAILABLE, retryable;
+     * any other keystore failure: KEY_LOOKUP_FAILED, the key kept
+     * (StepUpKeyEntry decides).
      */
     private fun liveEntry(keyStore: KeyStore): KeyStore.PrivateKeyEntry {
-        // An alias can outlive its private key. Seen on an Android 9 phone:
-        // containsAlias was true, isKeyEntry false, and getEntry
-        // threw a bare UnsupportedOperationException, which surfaced as an
-        // unexplained native error instead of a dead key. A certificate without
-        // its private key can never sign, so it is a dead key like the others.
-        if (!keyStore.isKeyEntry(keyAlias)) {
-            throw discardDeadKey(
-                IllegalStateException("The step-up alias holds no private key."),
-            )
+        // What the lookups find is decided by StepUpKeyEntry: only Android's
+        // own word that the key is dead deletes it. An alias that outlived its
+        // private key on an Android 9 phone (isKeyEntry false, getEntry
+        // throwing UnsupportedOperationException) used to be deleted here, as
+        // did every lookup that could not say -- on Android 9 a binder error
+        // also reads as isKeyEntry false. Those keys are now kept.
+        var entry: KeyStore.PrivateKeyEntry? = null
+        var cause: Throwable? = null
+        val lookup = if (!keyStore.isKeyEntry(keyAlias)) {
+            StepUpKeyEntry.Lookup.NOT_KEY_ENTRY
+        } else {
+            try {
+                entry = keyStore.getEntry(keyAlias, null) as? KeyStore.PrivateKeyEntry
+                if (entry == null) StepUpKeyEntry.Lookup.NOT_PRIVATE_KEY else StepUpKeyEntry.Lookup.PRIVATE_KEY
+            } catch (error: UnrecoverableKeyException) {
+                cause = error
+                StepUpKeyEntry.Lookup.UNRECOVERABLE
+            } catch (error: UnsupportedOperationException) {
+                cause = error
+                StepUpKeyEntry.Lookup.UNSUPPORTED
+            } catch (error: GeneralSecurityException) {
+                cause = error
+                StepUpKeyEntry.Lookup.OTHER_FAILURE
+            }
         }
-        val loaded = try {
-            keyStore.getEntry(keyAlias, null)
-        } catch (error: UnrecoverableKeyException) {
-            throw discardDeadKey(error)
-        } catch (error: UnsupportedOperationException) {
-            throw discardDeadKey(error)
-        } catch (error: GeneralSecurityException) {
-            throw InstallationKeyFailure(
+        var start = StepUpKeyEntry.SignStart.NOT_TRIED
+        val loaded = entry
+        if (loaded != null) {
+            start = try {
+                Signature.getInstance("SHA256withECDSA").initSign(loaded.privateKey)
+                StepUpKeyEntry.SignStart.STARTED
+            } catch (error: KeyPermanentlyInvalidatedException) {
+                cause = error
+                StepUpKeyEntry.SignStart.PERMANENTLY_INVALIDATED
+            } catch (_: UserNotAuthenticatedException) {
+                StepUpKeyEntry.SignStart.NEEDS_AUTHENTICATION
+            }
+        }
+        return when (StepUpKeyEntry.verdict(lookup, start)) {
+            StepUpKeyEntry.Verdict.USABLE -> loaded!!
+            StepUpKeyEntry.Verdict.INVALIDATED -> throw discardDeadKey(cause!!)
+            StepUpKeyEntry.Verdict.UNAVAILABLE -> throw InstallationKeyFailure(
+                "STEPUP_KEY_UNAVAILABLE",
+                "AndroidKeyStore could not establish whether the step-up key is usable " +
+                    "(${lookup.name.lowercase()}" +
+                    (cause?.let { ": ${it.javaClass.simpleName}: ${it.message}" } ?: "") +
+                    "); the key was kept. Try again; if this persists, re-enrol to replace it.",
+                cause,
+            )
+            StepUpKeyEntry.Verdict.LOOKUP_FAILED -> throw InstallationKeyFailure(
                 "KEY_LOOKUP_FAILED",
                 "AndroidKeyStore could not load the step-up key: " +
-                    "${error.javaClass.simpleName}: ${error.message}",
-                error,
+                    "${cause?.javaClass?.simpleName}: ${cause?.message}",
+                cause,
             )
         }
-        val entry = loaded as? KeyStore.PrivateKeyEntry
-            ?: throw discardDeadKey(
-                IllegalStateException("The step-up alias no longer holds a private key."),
-            )
-        try {
-            Signature.getInstance("SHA256withECDSA").initSign(entry.privateKey)
-        } catch (error: KeyPermanentlyInvalidatedException) {
-            throw discardDeadKey(error)
-        } catch (_: UserNotAuthenticatedException) {
-            // Alive: a windowed key outside its window only needs authentication.
-        }
-        return entry
     }
 
     private fun keyInfo(entry: KeyStore.PrivateKeyEntry): KeyInfo {

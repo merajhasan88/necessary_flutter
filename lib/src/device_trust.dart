@@ -441,6 +441,12 @@ class DeviceTrust {
     return _offeredStepUpKey = key;
   }
 
+  /// A step-up key a re-enrolment replaces: one that can never sign again,
+  /// or one the keystore cannot vouch for.
+  static bool _replaceableKey(NativeKeyException error) =>
+      error.code == 'STEPUP_KEY_INVALIDATED' ||
+      error.code == 'STEPUP_KEY_UNAVAILABLE';
+
   /// What approvals answer while the backend does not hold the step-up key.
   static NativeKeyException _reenrolPending() => NativeKeyException(
     'STEPUP_REENROL_PENDING',
@@ -667,7 +673,18 @@ class DeviceTrust {
       );
     }
 
-    StepUpKeyMetadata key = await newKey(replace: false);
+    // A re-enrolment is the explicit recovery: a key the keystore cannot
+    // vouch for (STEPUP_KEY_UNAVAILABLE), or one that can never sign again,
+    // is replaced here -- and only here.
+    StepUpKeyMetadata key;
+    try {
+      key = await newKey(replace: false);
+    } on NativeKeyException catch (error) {
+      if (!_replaceableKey(error)) {
+        rethrow;
+      }
+      key = await newKey(replace: true);
+    }
     if (!key.created && !options.accepts(key)) {
       key = await newKey(replace: true);
     }
@@ -692,8 +709,7 @@ class DeviceTrust {
       keyProof = await proveWith(key);
     } on NativeKeyException catch (error) {
       // A key that died with the screen lock is found only when it signs.
-      if (error.code != 'STEPUP_KEY_INVALIDATED' &&
-          error.code != 'STEPUP_KEY_NOT_FOUND') {
+      if (!_replaceableKey(error) && error.code != 'STEPUP_KEY_NOT_FOUND') {
         rethrow;
       }
       key = await newKey(replace: true);

@@ -180,8 +180,11 @@ says so to your backend. iOS makes per-use keys only. An app whose backend sets 
 `trust.stepUp` before `start()`.
 
 Removing the screen lock, or enrolling another biometric for a biometric key, makes the key unusable:
-an approval then fails with `NativeKeyException` `STEPUP_KEY_INVALIDATED`. The person re-enrols a new
-key with their own re-authentication:
+an approval then fails with `NativeKeyException` `STEPUP_KEY_INVALIDATED`. On Android the plugin
+deletes the key only when Android itself says so; when the keystore cannot establish whether the key is
+usable — a failure it may recover from — the approval fails with `STEPUP_KEY_UNAVAILABLE` and the key
+is kept: try again later. The person re-enrols a new key with their own re-authentication, which also
+replaces a key that stays unavailable:
 
 ```dart
 await trust.reenrolStepUp(
