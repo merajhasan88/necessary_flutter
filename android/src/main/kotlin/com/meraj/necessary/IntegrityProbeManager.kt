@@ -211,7 +211,9 @@ class IntegrityProbeManager(
             linkedMapOf(
                 "status" to "error",
                 "error_type" to error.javaClass.simpleName,
-                "error" to ((error.message ?: "probe failed").take(240))
+                // Its words, then every cause beneath them: the kind alone
+                // (error_type) says little of an Android 9 keystore failure.
+                "error" to Causes.withCauses(error.message ?: "probe failed", error.cause).take(240)
             )
         }
 
@@ -296,22 +298,34 @@ class IntegrityProbeManager(
         }
         val proxy = manager.defaultProxy != null ||
             !System.getProperty("http.proxyHost").isNullOrBlank()
+        // Names are context; the two answers above stand without them. A
+        // listing that failed, whole or for one interface, is in unread: an
+        // empty or short list would read as "no such interface".
         val interfaces = mutableListOf<String>()
+        var interfacesUnread: String? = null
         try {
             NetworkInterface.getNetworkInterfaces()?.let { all ->
                 for (item in Collections.list(all)) {
-                    if (item.isUp && !item.isLoopback) interfaces.add(item.name.take(32))
+                    try {
+                        if (item.isUp && !item.isLoopback) interfaces.add(item.name.take(32))
+                    } catch (error: Throwable) {
+                        if (interfacesUnread == null) {
+                            interfacesUnread = ProbeReads.why(error)
+                        }
+                    }
                 }
             }
-        } catch (_: Throwable) {
-            // Names are context; the two answers above stand without them.
+        } catch (error: Throwable) {
+            interfacesUnread = ProbeReads.why(error)
         }
-        return ok(
+        val result = ok(
             "vpn_active" to vpn,
             "http_proxy_configured" to proxy,
             "transports" to transports.toList(),
             "interfaces" to interfaces.distinct().take(32)
-        )
+        ).toMutableMap()
+        interfacesUnread?.let { result["unread"] = mapOf("interfaces" to it) }
+        return result
     }
 
     /**
@@ -590,7 +604,7 @@ class IntegrityProbeManager(
                 pm.getInstallerPackageName(context.packageName)
             }
         } catch (error: Throwable) {
-            installerUnread = error.javaClass.simpleName
+            installerUnread = ProbeReads.why(error)
             null
         }
 
@@ -752,7 +766,7 @@ class IntegrityProbeManager(
             } catch (_: ConnectException) {
                 ProbeReads.PortResult.Refused
             } catch (error: Throwable) {
-                ProbeReads.PortResult.Failed(error.javaClass.simpleName)
+                ProbeReads.PortResult.Failed(ProbeReads.why(error))
             }
         }
     )
@@ -1031,7 +1045,7 @@ class IntegrityProbeManager(
             ProcessBuilder(command).redirectErrorStream(true).start()
         } catch (error: Throwable) {
             // Never "" -- a command that did not start answered nothing.
-            return ProbeReads.CommandResult(false, false, null, "", error.javaClass.simpleName)
+            return ProbeReads.CommandResult(false, false, null, "", ProbeReads.why(error))
         }
         val output = StringBuilder()
         var readError: String? = null
@@ -1046,7 +1060,7 @@ class IntegrityProbeManager(
                     }
                 }
             } catch (error: Throwable) {
-                readError = error.javaClass.simpleName
+                readError = ProbeReads.why(error)
             }
         }
         reader.isDaemon = true

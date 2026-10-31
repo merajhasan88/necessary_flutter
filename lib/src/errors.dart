@@ -8,7 +8,8 @@ library;
 /// `STEPUP_KEY_UNAVAILABLE` (the keystore could not say whether the key is
 /// usable, or could not be reached; it was kept: try again, or re-enrol),
 /// `STEPUP_CANCELLED`, `STEPUP_REENROL_PENDING` and the like -- and [message]
-/// says it in words.
+/// says it in words: on Android followed by everything that failed beneath it
+/// (`[cause: ...]`), down to the keystore's own answer.
 class NativeKeyException implements Exception {
   NativeKeyException(this.code, this.message);
 

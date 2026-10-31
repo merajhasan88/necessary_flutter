@@ -32,7 +32,7 @@ needs Flutter 3.47.
 
 ```yaml
 dependencies:
-  necessary: ^0.1.4
+  necessary: ^0.1.5
 ```
 
 The plugin declares what its own features need. Your app adds only what you choose to use:
@@ -262,6 +262,7 @@ Step-up and the app PIN combine: your backend decides which requests need which.
 | A step-up prompt is open | on iOS the plugin's other calls — a scan, a request's signature — wait until the person answers it; Android runs them meanwhile |
 | `reset()` or `close()` while calls run | the calls end with `InterruptedCallException` and keep nothing — no session, no installation ID, no report sent, no request proof or app PIN answer handed out; a reset first waits for every write and key change still running, so none outlives it; after a reset, new calls wait for the deletion and never join one made before. A proof handed out before the reset, or a request already sent, is beyond it: reset is local |
 | A key cannot be deleted | `reset()` fails with that `NativeKeyException` (`KEY_DELETE_FAILED`): call it again. If it is the installation key, the installation stays as it was, its ID with it; if it is the step-up key, the installation itself is already gone. None to delete, or no step-up on the phone, is no failure |
+| A native call fails on Android | the `NativeKeyException`'s message says what failed, then everything beneath it — `[cause: …]`, each failure's kind and words down to the keystore's own answer, and from Android 13 the keystore's numeric code — so a key that reads as unavailable or dead says what the keystore answered. A probe's `error` and each `unread` reason carry the same, within the contract's lengths |
 | A call abandoned, or its answer lost | a scan is simply asked for again — a challenge serves once; the plugin never sends a signed request twice: sign it again, and let your backend decide whether the first one reached it |
 | A report over 65,536 bytes | it is never sent: the app lists the contract lets a collector shorten are shortened, and say `truncated`; anything else answers an `ApiException` `report_too_large` |
 

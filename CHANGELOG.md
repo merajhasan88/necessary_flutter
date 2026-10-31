@@ -1,3 +1,19 @@
+## 0.1.5
+
+- Android: every failure says what failed beneath it. A native call's `NativeKeyException` message ends
+  with `[cause: …]` — each failure beneath it, its kind and its words, down to the keystore's own
+  answer, and from Android 13 the keystore's numeric code and whether it deems the failure transient.
+  Before, a message carried one level of cause at most (on Android 9 a failed key lookup read only
+  "Failed to obtain information about key", the keystore's answer lost) and several carried none — short
+  of the release review's item 4, which asked to keep "the original cause chain and available error
+  codes". A probe's `error` and each `unread` reason carry the same, within the contract's 240 and 160
+  characters; those that named only the failure's kind (the installer, a Frida port, a command) now
+  say its words too.
+- Android: a step-up signature that failed before its prompt, for a reason other than the key, answers
+  `NATIVE_STEPUP_ERROR` with its causes, as every other channel does, instead of Flutter's generic error.
+- Android: `network` puts a listing of the interfaces that failed — whole, or for one interface — in
+  `unread` as `interfaces`, where an empty or short list used to read as "no such interface".
+
 ## 0.1.4
 
 - Android: a key is made only where the keystore, answering, holds none. `containsAlias` also answers

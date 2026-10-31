@@ -305,7 +305,10 @@ object ProbeReads {
         return withUnread(result, read.unread)
     }
 
-    private fun why(error: Throwable?): String =
-        error?.let { it.javaClass.simpleName + (it.message?.let { m -> ": $m" } ?: "") }?.take(160)
-            ?: "unknown"
+    /**
+     * Why a read failed, for `unread` and a probe's `error`: the failure and
+     * every cause beneath it (Causes), within the contract's 160 characters.
+     */
+    internal fun why(error: Throwable?): String =
+        Causes.chain(error).ifEmpty { "unknown" }.take(160)
 }

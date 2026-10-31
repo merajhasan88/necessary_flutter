@@ -170,18 +170,12 @@ class NecessaryPlugin :
                     ) { outcome ->
                         outcome.fold(
                             { signature -> result.success(signature) },
-                            { error ->
-                                val failure = error as? InstallationKeyFailure
-                                result.error(
-                                    failure?.errorCode ?: "NATIVE_STEPUP_ERROR",
-                                    error.message ?: "The step-up signature failed.",
-                                    null,
-                                )
-                            },
+                            { error -> reportStepUpFailure(result, error) },
                         )
                     }
-                } catch (error: InstallationKeyFailure) {
-                    result.error(error.errorCode, error.message, null)
+                } catch (error: Throwable) {
+                    // Whatever failed before the prompt, said with its causes.
+                    reportStepUpFailure(result, error)
                 }
             }
             "deleteKey" -> runOffMainThread(result) { stepUpKeys.deleteKey() }
@@ -281,20 +275,14 @@ class NecessaryPlugin :
                 val value = operation()
                 mainHandler.post { result.success(value) }
             } catch (error: InstallationKeyFailure) {
-                mainHandler.post { result.error(error.errorCode, error.message, null) }
+                mainHandler.post { result.error(error.errorCode, error.report(::keystoreDetail), null) }
             } catch (error: Throwable) {
                 // Name the exception and its cause: a release build's log output
                 // is suppressed on some phones, so the message shown in the app
                 // is the only diagnostic there is.
                 val detail = buildString {
                     append("The Android native operation failed: ")
-                    append(error.javaClass.name)
-                    error.message?.let { append(": ").append(it) }
-                    error.cause?.let { cause ->
-                        append(" (cause ").append(cause.javaClass.name)
-                        cause.message?.let { append(": ").append(it) }
-                        append(")")
-                    }
+                    append(Causes.chain(error, ::keystoreDetail))
                     append(" at ")
                     append(error.stackTrace.take(6).joinToString(" < ") {
                         "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}"
@@ -303,5 +291,29 @@ class NecessaryPlugin :
                 mainHandler.post { result.error("NATIVE_INTEGRITY_ERROR", detail, null) }
             }
         }
+    }
+
+    /** A step-up signature that failed: its code, and its words with every cause beneath them. */
+    private fun reportStepUpFailure(result: MethodChannel.Result, error: Throwable) {
+        if (error is InstallationKeyFailure) {
+            result.error(error.errorCode, error.report(::keystoreDetail), null)
+        } else {
+            result.error(
+                "NATIVE_STEPUP_ERROR",
+                "The step-up signature failed: " + Causes.chain(error, ::keystoreDetail),
+                null,
+            )
+        }
+    }
+
+    /**
+     * AndroidKeyStore's own error code, which its exception's message may leave
+     * out: public from Android 13 (API 33), with whether the keystore deems the
+     * failure transient.
+     */
+    private fun keystoreDetail(error: Throwable): String? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return null
+        val keystore = error as? android.security.KeyStoreException ?: return null
+        return "code ${keystore.numericErrorCode}" + if (keystore.isTransientFailure) ", transient" else ""
     }
 }

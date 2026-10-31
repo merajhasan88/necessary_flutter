@@ -21,7 +21,14 @@ class InstallationKeyFailure(
     val errorCode: String,
     override val message: String,
     cause: Throwable? = null,
-) : Exception(message, cause)
+) : Exception(message, cause) {
+    /**
+     * What the app is told: this failure's words, then every cause beneath it
+     * (Causes). [detail] adds AndroidKeyStore's error code where its API has one.
+     */
+    fun report(detail: (Throwable) -> String? = { null }): String =
+        Causes.withCauses(message, cause, detail)
+}
 
 /**
  * Owns one non-exportable P-256 signing key in AndroidKeyStore.
@@ -182,9 +189,8 @@ class InstallationKeyManager(private val context: Context) {
 
     private fun keyUnavailable(cause: Throwable?) = InstallationKeyFailure(
         "KEY_UNAVAILABLE",
-        "AndroidKeyStore could not be reached for the installation key" +
-            (cause?.let { " (${it.javaClass.simpleName}: ${it.message})" } ?: "") +
-            "; the key was kept, never replaced. Try again; if this persists, reset() starts a new installation.",
+        "AndroidKeyStore could not be reached for the installation key; the key was kept, never " +
+            "replaced. Try again; if this persists, reset() starts a new installation.",
         cause,
     )
 

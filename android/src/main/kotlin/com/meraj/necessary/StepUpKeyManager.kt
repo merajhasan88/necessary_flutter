@@ -231,7 +231,7 @@ class StepUpKeyManager(private val context: Context) {
                 Result.failure(
                     InstallationKeyFailure(
                         "STEPUP_SIGNING_FAILED",
-                        "AndroidKeyStore could not prepare the step-up signature: ${error.message}",
+                        "AndroidKeyStore could not prepare the step-up signature.",
                         error,
                     ),
                 ),
@@ -450,20 +450,20 @@ class StepUpKeyManager(private val context: Context) {
             keyStore.deleteEntry(keyAlias)
             if (keyStore.containsAlias(keyAlias)) "could not be removed (alias still present)" else "has been removed"
         } catch (error: Exception) {
-            "could not be removed (${error.javaClass.simpleName}: ${error.message})"
+            // Not the key's cause: the removal's own failure, said in full here.
+            "could not be removed (${Causes.chain(error)})"
         }
         InstallationKeyFailure(
             "STEPUP_KEY_INVALIDATED",
             "The step-up key was invalidated (the screen lock or enrolled biometrics changed) " +
-                "and $removal. Re-enrol the installation to get a new one. " +
-                "[cause ${cause.javaClass.simpleName}]",
+                "and $removal. Re-enrol the installation to get a new one.",
             cause,
         )
     }
 
     private fun signingFailed(error: Throwable) = InstallationKeyFailure(
         "STEPUP_SIGNING_FAILED",
-        "AndroidKeyStore could not sign with the step-up key: ${error.message}",
+        "AndroidKeyStore could not sign with the step-up key.",
         error,
     )
 
@@ -546,7 +546,7 @@ class StepUpKeyManager(private val context: Context) {
         } catch (error: Exception) {
             throw InstallationKeyFailure(
                 "STEPUP_KEY_GENERATION_FAILED",
-                "AndroidKeyStore could not create the step-up key: ${error.message}",
+                "AndroidKeyStore could not create the step-up key.",
                 error,
             )
         }
@@ -634,15 +634,13 @@ class StepUpKeyManager(private val context: Context) {
             StepUpKeyEntry.Verdict.UNAVAILABLE -> throw InstallationKeyFailure(
                 "STEPUP_KEY_UNAVAILABLE",
                 "AndroidKeyStore could not establish whether the step-up key is usable " +
-                    "(${lookup.name.lowercase()}" +
-                    (cause?.let { ": ${it.javaClass.simpleName}: ${it.message}" } ?: "") +
-                    "); the key was kept. Try again; if this persists, re-enrol to replace it.",
+                    "(lookup: ${lookup.name.lowercase()}); the key was kept. Try again; if this " +
+                    "persists, re-enrol to replace it.",
                 cause,
             )
             StepUpKeyEntry.Verdict.LOOKUP_FAILED -> throw InstallationKeyFailure(
                 "KEY_LOOKUP_FAILED",
-                "AndroidKeyStore could not load the step-up key: " +
-                    "${cause?.javaClass?.simpleName}: ${cause?.message}",
+                "AndroidKeyStore could not load the step-up key.",
                 cause,
             )
         }
@@ -656,9 +654,8 @@ class StepUpKeyManager(private val context: Context) {
 
     private fun keyUnavailable(cause: Throwable?) = InstallationKeyFailure(
         "STEPUP_KEY_UNAVAILABLE",
-        "AndroidKeyStore could not be reached for the step-up key" +
-            (cause?.let { " (${it.javaClass.simpleName}: ${it.message})" } ?: "") +
-            "; the key was kept, never replaced. Try again; if this persists, re-enrol to replace it.",
+        "AndroidKeyStore could not be reached for the step-up key; the key was kept, never " +
+            "replaced. Try again; if this persists, re-enrol to replace it.",
         cause,
     )
 

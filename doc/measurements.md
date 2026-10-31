@@ -364,7 +364,9 @@ memory page size.
 Whether a VPN is up and an HTTP proxy is set, as Android's connectivity service says: every network is
 asked, not only the default one, since a VPN is a network of its own. Interface names only, never an
 address. The proxy says how the phone is set, not which way the report came: whether an app's own
-requests follow it depends on how the app makes them (a Flutter app's do not).
+requests follow it depends on how the app makes them (a Flutter app's do not). A listing of the
+interfaces that failed, whole or for one interface, is in `unread` as `interfaces`: the list is then
+not all of them.
 
 **When:** every scan, whether or not your backend asks.
 
