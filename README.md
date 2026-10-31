@@ -20,7 +20,7 @@ needs Flutter 3.47.
   (`contract/report-1/android-8-ios-5/`) — the report's schema, its rules and sample reports. The
   folder's name is two versions: `report-1` is the report's format, and `android-8-ios-5` the lowest
   versions of the measuring code, the collector, that the contract accepts — 8 on Android and 5 on iOS
-  (`collector_version`; this plugin's are 8 and 6). They are not the Android or iOS versions the plugin
+  (`collector_version`; this plugin's are 8 and 7). They are not the Android or iOS versions the plugin
   runs on, which are above.
 - [The example app](https://github.com/merajhasan88/necessary_flutter/tree/main/example)
   (`example/`) puts every piece below in a working app, against the

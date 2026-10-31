@@ -1,5 +1,10 @@
 ## Unreleased
 
+- iOS (collector 7): an app image whose code the App Store encrypted on disk is no longer compared with
+  its file — the file holds encrypted bytes and memory the decrypted ones, so a genuine App Store
+  install would have differed in every encrypted byte. Such an image is skipped with its `__text`
+  bytes and named in `app_images_not_compared`, so `app_complete` is false; builds stored in the clear
+  are compared as before.
 - `doc/measurements.md` is the same for every Necessary SDK: it says "the SDK" where it said "the
   plugin", and leaves what differs between SDKs — the collector versions, the Android and iOS versions,
   how an app turns on a personal measurement — to each SDK's README.

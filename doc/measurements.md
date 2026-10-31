@@ -593,9 +593,12 @@ the app — the main executable and its frameworks — has its `__text` compared
 libraries in a shared cache that no app can read, so only the app's own code can be compared: the system
 figures are always 0 — not measured, never clean — and `system_images_unreadable` counts those
 libraries. Each app image is compared, unreadable (its file could not be read in full) or skipped (no
-usable `__text`, a `__TEXT` over 64 MiB, no live address); images and bytes both add up, expected =
-compared + unreadable + skipped. `app_complete` is true exactly when every image was compared, the main
-executable among them. It comes with every scan; ask for it too, since a report that lacks it is refused
+usable `__text`, a `__TEXT` over 64 MiB, no live address, or code encrypted on disk); images and bytes
+both add up, expected = compared + unreadable + skipped. An app installed from the App Store has its
+code encrypted in its files and decrypted only in memory, so the two differ in every encrypted byte of a
+genuine app: such an image is skipped and named in `app_images_not_compared`, never compared — a
+development, ad hoc or enterprise build is stored in the clear and is compared. `app_complete` is true
+exactly when every image was compared, the main executable among them. It comes with every scan; ask for it too, since a report that lacks it is refused
 only when you asked for it.
 
 **When:** every scan, whether or not your backend asks.

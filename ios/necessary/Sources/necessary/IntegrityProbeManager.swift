@@ -33,7 +33,7 @@ final class IntegrityProbeManager {
     /// What the reads mean - the coverage tally, the text span's checks, the
     /// one location read - is in ProbeReads.swift, which needs no Apple-only
     /// framework and so can be tested on any Swift toolchain.
-    private static let collectorVersion = 6
+    private static let collectorVersion = 7
     /// Sent with every scan whether or not the server asked, like
     /// code_integrity below, so no older client breaks.
     private static let volunteeredProbes = ["device", "network"]
@@ -531,7 +531,9 @@ final class IntegrityProbeManager {
     }
 
     /// Finds the __TEXT segment and its __text section in an image's load
-    /// commands; ProbeReads.textSpan decides whether they can be compared.
+    /// commands, and its encryption; ProbeReads decides whether they can be
+    /// compared. Every command is read: LC_ENCRYPTION_INFO_64 follows the
+    /// segments, so stopping at __TEXT would never see it.
     private func textSpan(of header: UnsafePointer<mach_header>)
         -> Result<ProbeReads.TextSpan, ProbeReads.CoverageProblem> {
         let raw = UnsafeRawPointer(header)
@@ -540,10 +542,12 @@ final class IntegrityProbeManager {
             return .failure(ProbeReads.CoverageProblem(reason: "not a 64-bit Mach-O image", textSize: 0))
         }
         var cursor = raw.advanced(by: MemoryLayout<mach_header_64>.size)
+        var found: Result<ProbeReads.TextSpan, ProbeReads.CoverageProblem>?
+        var encryption: (offset: UInt32, size: UInt32, id: UInt32)?
 
         for _ in 0..<header64.pointee.ncmds {
             let command = cursor.assumingMemoryBound(to: load_command.self)
-            if command.pointee.cmd == UInt32(LC_SEGMENT_64) {
+            if command.pointee.cmd == UInt32(LC_SEGMENT_64), found == nil {
                 let segment = cursor.assumingMemoryBound(to: segment_command_64.self)
                 if name(of: segment.pointee.segname) == "__TEXT" {
                     var text: (offset: UInt64, size: UInt64)?
@@ -556,17 +560,29 @@ final class IntegrityProbeManager {
                         }
                         section = section.advanced(by: MemoryLayout<section_64>.size)
                     }
-                    return ProbeReads.textSpan(
+                    found = ProbeReads.textSpan(
                         segmentFileOffset: segment.pointee.fileoff,
                         segmentFileSize: segment.pointee.filesize,
                         segmentVMAddress: segment.pointee.vmaddr,
                         section: text
                     )
                 }
+            } else if command.pointee.cmd == UInt32(LC_ENCRYPTION_INFO_64) {
+                let info = cursor.assumingMemoryBound(to: encryption_info_command_64.self)
+                encryption = (offset: info.pointee.cryptoff, size: info.pointee.cryptsize,
+                              id: info.pointee.cryptid)
             }
             cursor = cursor.advanced(by: Int(command.pointee.cmdsize))
         }
-        return .failure(ProbeReads.CoverageProblem(reason: "no __TEXT segment", textSize: 0))
+        guard let result = found else {
+            return .failure(ProbeReads.CoverageProblem(reason: "no __TEXT segment", textSize: 0))
+        }
+        if case .success(let span) = result, let crypt = encryption,
+           let problem = ProbeReads.encryptionProblem(
+               cryptOffset: crypt.offset, cryptSize: crypt.size, cryptID: crypt.id, span: span) {
+            return .failure(problem)
+        }
+        return result
     }
 
     /// Mach-O stores segment and section names as a fixed 16-byte field that is

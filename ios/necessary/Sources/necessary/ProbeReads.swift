@@ -69,6 +69,27 @@ enum ProbeReads {
         ))
     }
 
+    /// Whether an image's encryption keeps its __text from being compared, or
+    /// nil. The App Store encrypts an app's code on disk (LC_ENCRYPTION_INFO_64,
+    /// `cryptid` 1) and iOS decrypts it as it maps it, so a genuine image's file
+    /// and memory differ in every encrypted byte. An encrypted range that
+    /// overlaps __text makes the image one that cannot be compared: skipped,
+    /// with its __text bytes -- never compared, never clean. Offsets are the
+    /// file's, as `span`'s are; `cryptid` 0 is an image stored in the clear.
+    static func encryptionProblem(
+        cryptOffset: UInt32, cryptSize: UInt32, cryptID: UInt32, span: TextSpan
+    ) -> CoverageProblem? {
+        guard cryptID != 0, cryptSize > 0 else { return nil }
+        let textStart = UInt64(span.segmentFileOffset) + UInt64(span.textOffsetInSegment)
+        let textEnd = textStart + UInt64(span.textSize)
+        let cryptStart = UInt64(cryptOffset)
+        let cryptEnd = cryptStart + UInt64(cryptSize)
+        guard cryptStart < textEnd, textStart < cryptEnd else { return nil }
+        return CoverageProblem(
+            reason: "encrypted on disk (App Store): its code cannot be compared with its file",
+            textSize: span.textSize)
+    }
+
     /// Why a read of `wanted` bytes is not the whole of them, or nil: a short
     /// read is unreadable, never a comparison of part.
     static func readProblem(got: Int, wanted: Int) -> String? {
