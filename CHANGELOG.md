@@ -1,5 +1,11 @@
 ## Unreleased
 
+- Android (collector 9): the code comparison reads the memory map once and takes every region from that
+  snapshot. It used to reopen the map for each library, and a failed reopen counted as "not loaded", so a
+  region could read complete with a target unmeasured; a map that cannot be read now answers `checked`
+  false with `reason` `maps_unreadable` (or `maps_empty`, `no_target_mapped`). And one comparison runs
+  at a time in the process, whichever engine or thread asks: a comparison makes execute-only pages
+  readable while it reads them, and two at once could read a page the other had just locked again.
 - iOS (collector 7): an app image whose code the App Store encrypted on disk is no longer compared with
   its file — the file holds encrypted bytes and memory the decrypted ones, so a genuine App Store
   install would have differed in every encrypted byte. Such an image is skipped with its `__text`

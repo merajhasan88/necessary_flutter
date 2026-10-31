@@ -266,7 +266,11 @@ names (the Flutter SDK: the Flutter engine, `libflutter.so`, and the compiled Da
 In each region expected = compared + skipped + unreadable, and `<region>_complete` is true exactly when
 some code was expected and all of it was compared. Any differing byte is code changed while the app
 runs, which should never happen. Memory that Android 10 and later maps execute-only is made readable for
-the copy and restored. `checked` false: the comparison did not run, and `reason` says why.
+the copy and restored. The memory map is read once, whole, and every region taken from that one
+snapshot: complete means every target mapping in the snapshot compared. One comparison runs at a time
+in the app's process. `checked` false: the comparison did not run, and `reason` says why —
+`maps_unreadable` or `maps_empty` when the memory map could not be read, `no_target_mapped` when it
+names no target; every region is then incomplete.
 
 **When:** your backend asks for it.
 

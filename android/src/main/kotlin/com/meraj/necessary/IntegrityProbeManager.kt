@@ -69,7 +69,7 @@ class IntegrityProbeManager(
         //     error, or names the parts it could not read in "unread"
         //     (ProbeReads.kt). One location read answers both location
         //     measurements, which carry its fix_time.
-        private const val COLLECTOR_VERSION = 8
+        private const val COLLECTOR_VERSION = 9
         // Sent with every scan whether or not the server asked: the server
         // tolerates probes beyond its plan but refuses a report missing one it
         // asked for, so a probe new to this collector stays out of the plan and
@@ -973,9 +973,10 @@ class IntegrityProbeManager(
         }
         return try {
             val o = JSONObject(json)
+            val checked = o.optBoolean("checked", false)
             val result = linkedMapOf<String, Any>(
                 "status" to "ok",
-                "checked" to o.optBoolean("checked", false),
+                "checked" to checked,
                 "diff_bytes" to o.optLong("diff_bytes", 0),
                 "core_compared_bytes" to o.optLong("core_compared_bytes", 0),
                 "core_diff_bytes" to o.optLong("core_diff_bytes", 0),
@@ -1007,6 +1008,10 @@ class IntegrityProbeManager(
             if (o.has("protect_restore_failures")) {
                 result["protect_restore_failures"] = o.optInt("protect_restore_failures", 0)
             }
+            // Why nothing was compared: the memory map unreadable or empty, or
+            // no target mapped in it -- never a bucket read as complete.
+            val reason = o.optString("reason", "")
+            if (!checked && reason.isNotEmpty()) result["reason"] = reason
             result
         } catch (error: Throwable) {
             ok("checked" to false, "reason" to ("parse_error:" + error.javaClass.simpleName))
