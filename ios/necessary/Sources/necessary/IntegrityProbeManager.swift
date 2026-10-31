@@ -500,6 +500,21 @@ final class IntegrityProbeManager {
             return .skipped(textBytes: problem.textSize, why: problem.reason)
         }
 
+        // Where the image is in its file (collector 8): the file itself, or its
+        // arm64 slice in a universal file -- frameworks nothing thinned keep
+        // that form, and every offset of the image counts from the slice.
+        let slice: Int
+        switch readFileRange(path: path, offset: 0, length: 4096) {
+        case .success(let head):
+            guard let found = ProbeReads.arm64Slice([UInt8](head)) else {
+                return .unreadable(textBytes: span.textSize,
+                                   why: "neither a 64-bit Mach-O file nor a universal one with an arm64 image")
+            }
+            slice = found
+        case .failure(let problem):
+            return .unreadable(textBytes: span.textSize, why: problem.reason)
+        }
+
         // The file must be the build that is running (collector 8): an app
         // updated while it ran has the old code in memory and the new file on
         // disk. Its header and load commands are read from the file and its
@@ -508,14 +523,14 @@ final class IntegrityProbeManager {
             .assumingMemoryBound(to: mach_header_64.self).pointee.sizeofcmds)
         if let loaded = read.uuid,
            case .success(let fileHeader) = readFileRange(
-               path: path, offset: 0, length: MemoryLayout<mach_header_64>.size + commandsSize),
+               path: path, offset: slice, length: MemoryLayout<mach_header_64>.size + commandsSize),
            let problem = ProbeReads.buildProblem(
                loaded: loaded, onDisk: ProbeReads.machOUUID([UInt8](fileHeader)), textSize: span.textSize) {
             return .skipped(textBytes: problem.textSize, why: problem.reason)
         }
 
         let onDisk: Data
-        switch readFileRange(path: path, offset: span.segmentFileOffset, length: span.segmentSize) {
+        switch readFileRange(path: path, offset: slice + span.segmentFileOffset, length: span.segmentSize) {
         case .success(let data):
             onDisk = data
         case .failure(let problem):

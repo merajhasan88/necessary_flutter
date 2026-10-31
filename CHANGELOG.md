@@ -26,6 +26,10 @@
     it ran — TrollStore installs over a running app — compared the old code in memory with the new
     file and reported many bytes changed that nobody changed; such an image is now skipped with its
     `__text` bytes, named with why, and `app_complete` is false.
+  - iOS: a framework stored as a universal file — the form Flutter builds `App.framework` in, kept where
+    nothing thins it, as in an ad hoc or enterprise install — is compared through its arm64 image. It
+    was read from the file's start, where the universal header is, so every byte compared would have
+    been the wrong one.
   - iOS: an image dyld counts but gives no name or header for (one unloading as the list is read) is no
     longer dropped: it counts as an app image not read in `code_integrity`, and in `unread` as
     `image_names` in `dyld_images`.

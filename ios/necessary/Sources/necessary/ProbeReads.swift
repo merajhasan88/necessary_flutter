@@ -96,6 +96,27 @@ enum ProbeReads {
         return got == wanted ? nil : "unreadable: \(got) of \(wanted) bytes read"
     }
 
+    /// Where the arm64 image starts in its file: 0 when the file is a 64-bit
+    /// Mach-O image; the arm64 slice's offset in a universal ("fat") file, the
+    /// form a build keeps its frameworks in when nothing thinned them (an ad
+    /// hoc or enterprise install, say); nil when it is neither. The image's own
+    /// offsets count from there, never from the file's start.
+    static func arm64Slice(_ head: [UInt8]) -> Int? {
+        func big(_ at: Int) -> Int? {
+            guard at + 4 <= head.count else { return nil }
+            return Int(head[at]) << 24 | Int(head[at + 1]) << 16 | Int(head[at + 2]) << 8 | Int(head[at + 3])
+        }
+        guard head.count >= 8 else { return nil }
+        let little = Int(head[0]) | Int(head[1]) << 8 | Int(head[2]) << 16 | Int(head[3]) << 24
+        if little == 0xfeed_facf { return 0 }
+        guard big(0) == 0xcafe_babe, let count = big(4), count < 64 else { return nil }
+        for index in 0..<count {
+            guard let cpu = big(8 + index * 20), let offset = big(8 + index * 20 + 8) else { return nil }
+            if cpu == 0x0100_000c { return offset }  // CPU_TYPE_ARM64
+        }
+        return nil
+    }
+
     /// The LC_UUID of a 64-bit Mach-O image, from its header and load commands
     /// as read from its file, or nil when they hold none or cannot be walked.
     static func machOUUID(_ bytes: [UInt8]) -> [UInt8]? {

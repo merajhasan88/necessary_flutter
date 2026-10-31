@@ -615,8 +615,12 @@ usable `__text`, a `__TEXT` over 64 MiB, no live address, or code encrypted on d
 both add up, expected = compared + unreadable + skipped. An app installed from the App Store has its
 code encrypted in its files and decrypted only in memory, so the two differ in every encrypted byte of a
 genuine app: such an image is skipped and named in `app_images_not_compared`, never compared — a
-development, ad hoc or enterprise build is stored in the clear and is compared. `app_complete` is true
-exactly when every image was compared, the main executable among them. It comes with every scan; ask for it too, since a report that lacks it is refused
+development, ad hoc or enterprise build is stored in the clear and is compared. A framework stored as a
+universal file is compared through its arm64 image. An image whose file is another build than the one
+running — an app updated while it ran — is skipped and named, never compared: the old code in memory and
+the new file would differ in bytes nobody changed. An image the loader counts but gives no name for
+counts as one not read. `app_complete` is true exactly when every image was compared, the main executable
+among them. It comes with every scan; ask for it too, since a report that lacks it is refused
 only when you asked for it.
 
 **When:** every scan, whether or not your backend asks.
