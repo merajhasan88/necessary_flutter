@@ -69,7 +69,7 @@ class IntegrityProbeManager(
         //     error, or names the parts it could not read in "unread"
         //     (ProbeReads.kt). One location read answers both location
         //     measurements, which carry its fix_time.
-        private const val COLLECTOR_VERSION = 9
+        private const val COLLECTOR_VERSION = 10
         // Sent with every scan whether or not the server asked: the server
         // tolerates probes beyond its plan but refuses a report missing one it
         // asked for, so a probe new to this collector stays out of the plan and
@@ -127,7 +127,7 @@ class IntegrityProbeManager(
 
     // Native code-integrity component. Loaded best-effort: if it is absent the
     // probe degrades to reporting checked=false rather than crashing.
-    private external fun nativeCodeIntegrity(): String?
+    private external fun nativeCodeIntegrity(appApks: Array<String>, appDirs: Array<String>): String?
 
     private val nativeAvailable: Boolean = try {
         System.loadLibrary("codeintegrity")
@@ -335,13 +335,18 @@ class IntegrityProbeManager(
      */
     private fun probeLocalAddresses(): Map<String, Any> {
         val addresses = mutableListOf<Map<String, Any>>()
+        // More than a list holds is said, never cut off unsaid.
+        var truncated = false
         val all = NetworkInterface.getNetworkInterfaces()
             ?: return unavailable("no network interface could be listed")
         for (item in Collections.list(all)) {
             if (!item.isUp || item.isLoopback) continue
             for (address in Collections.list(item.inetAddresses)) {
                 if (address.isLoopbackAddress || address.isLinkLocalAddress) continue
-                if (addresses.size >= 32) break
+                if (addresses.size >= 32) {
+                    truncated = true
+                    break
+                }
                 addresses.add(
                     linkedMapOf(
                         "interface" to item.name.take(32),
@@ -350,7 +355,7 @@ class IntegrityProbeManager(
                 )
             }
         }
-        return ok("addresses" to addresses)
+        return ok("addresses" to addresses, "truncated" to truncated)
     }
 
     /**
@@ -403,8 +408,17 @@ class IntegrityProbeManager(
             ?: return unavailable("AccessibilityManager is not available")
         val services = mutableListOf<Map<String, Any>>()
         val reported = mutableSetOf<String>()
+        var undescribed = 0
         for (info in manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)) {
-            val service = info.resolveInfo?.serviceInfo ?: continue
+            val service = info.resolveInfo?.serviceInfo
+            if (service == null) {
+                // The manager reports it, but not its app: counted as unread,
+                // and never read as a service hiding from the manager.
+                info.id?.let { ComponentName.unflattenFromString(it.trim())?.flattenToString() }
+                    ?.let { reported.add(it) }
+                undescribed++
+                continue
+            }
             if (!reported.add(ComponentName(service.packageName, service.name).flattenToString())) continue
             if (services.size < MAX_APPS) {
                 services.add(appEntry(service.packageName, service.name, service.applicationInfo))
@@ -426,6 +440,9 @@ class IntegrityProbeManager(
         Settings.Secure.getString(context.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
             ?.let { ComponentName.unflattenFromString(it.trim()) }
             ?.let { result["keyboard"] = appEntry(it.packageName, it.className) }
+        if (undescribed > 0) {
+            result["unread"] = mapOf("services" to "$undescribed enabled services the system did not describe")
+        }
         return result
     }
 
@@ -975,9 +992,21 @@ class IntegrityProbeManager(
         if (!nativeAvailable) {
             return ok("checked" to false, "reason" to "native_unavailable")
         }
+        // The app's own: the APKs it was installed from (its region, by exact
+        // path) and the directories its files live in (what is outside the
+        // region but the app's, collector 10).
+        val info = context.applicationInfo
+        val apks = (listOf(info.sourceDir) + info.splitSourceDirs.orEmpty().toList())
+            .filterNotNull().distinct().toTypedArray()
+        val dirs = listOfNotNull(
+            info.sourceDir?.let { File(it).parent }?.let { "$it/" },
+            info.dataDir?.let { "$it/" },
+            "/data/data/${context.packageName}/",
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) info.deviceProtectedDataDir?.let { "$it/" } else null,
+        ).distinct().toTypedArray()
         val started = System.nanoTime()
         val json = try {
-            nativeCodeIntegrity()
+            nativeCodeIntegrity(apks, dirs)
         } catch (error: Throwable) {
             return ok("checked" to false, "reason" to ("native_error:" + error.javaClass.simpleName))
         }
@@ -1021,6 +1050,13 @@ class IntegrityProbeManager(
             }
             if (o.has("protect_restore_failures")) {
                 result["protect_restore_failures"] = o.optInt("protect_restore_failures", 0)
+            }
+            // The app's own executable files mapped outside the app region
+            // (collector 10): counted, and named, at most 32.
+            if (o.has("app_outside_count")) {
+                result["app_outside_count"] = o.optInt("app_outside_count", 0)
+                val files = o.optJSONArray("app_outside_files")
+                result["app_outside_files"] = (0 until (files?.length() ?: 0)).map { files!!.optString(it) }
             }
             // Why nothing was compared: the memory map unreadable or empty, or
             // no target mapped in it -- never a bucket read as complete.

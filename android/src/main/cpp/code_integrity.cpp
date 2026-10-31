@@ -36,6 +36,16 @@
 //     plugin instance, any engine, any thread -- takes the same lock for the
 //     whole snapshot/unlock/read/restore. (It does not make a library that
 //     the app itself unloads meanwhile safe to read.)
+//
+// And from the pass over the review's other items, the same day:
+//   - The app region is the app's own: the APKs it was installed from (base
+//     and splits, by exact path, as Android names them) and the libraries the
+//     SDK names. It used to be every mapping ending in ".apk" -- another
+//     package's APK-mapped code (WebView, a Play services module) counted as
+//     the app's. Whatever executable file of the app's own is mapped but not
+//     in the region -- a library another plugin extracted, the app's compiled
+//     Java and Kotlin -- is counted and named (app_outside_count,
+//     app_outside_files), so the report says what the region leaves out.
 
 #include <jni.h>
 #include <fcntl.h>
@@ -44,7 +54,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
+#include <algorithm>
+#include <atomic>
 #include <mutex>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -67,10 +80,47 @@ const char *kExt[] = {
 // The app's own native code. A normal Flutter release APK does NOT extract its
 // native libraries: they are mapped straight out of the (uncompressed) zip, so
 // /proc/self/maps shows them backed by ".../base.apk" rather than
-// ".../lib/arm64/libflutter.so". Matching only the .so names measured nothing
-// on a real release build. ".apk" covers the mapped-from-archive case (base
-// and split APKs); the .so names still cover builds that do extract.
-const char *kApp[] = {"/libflutter.so", "/libapp.so", ".apk", nullptr};
+// ".../lib/arm64/libflutter.so". The app's own APKs (base and splits) are
+// therefore targets by their exact paths, which the app passes in; these
+// names still cover builds that do extract.
+const char *kAppNamed[] = {"/libflutter.so", "/libapp.so", nullptr};
+
+// What the app owns: the APKs it was installed from, by exact path, and the
+// directories its own files live in (its install directory, its data
+// directories), each ending in '/'.
+struct AppOwn {
+    std::vector<std::string> apks;
+    std::vector<std::string> dirs;
+};
+
+// One target: a path suffix ("/libc.so") or an exact path (one of the app's
+// APKs), and the name a difference is reported under.
+struct Target {
+    std::string match;
+    bool exact;
+    std::string name;
+};
+
+std::vector<Target> named_targets(const char **suffixes) {
+    std::vector<Target> targets;
+    for (int i = 0; suffixes[i] != nullptr; i++) {
+        targets.push_back({suffixes[i], false, suffixes[i] + 1});  // name drops the leading '/'
+    }
+    return targets;
+}
+
+std::string base_name(const std::string &path) {
+    size_t slash = path.rfind('/');
+    return slash == std::string::npos ? path : path.substr(slash + 1);
+}
+
+std::vector<Target> app_targets(const AppOwn &own) {
+    std::vector<Target> targets = named_targets(kAppNamed);
+    for (const std::string &apk : own.apks) {
+        if (!apk.empty()) targets.push_back({apk, true, base_name(apk)});
+    }
+    return targets;
+}
 
 // What one bucket measured. expected = compared + skipped + unreadable, so a
 // bucket that measured less than its targets says so instead of reading clean.
@@ -96,9 +146,10 @@ struct Mapping {
 // Every comparison, from any thread of the process, one at a time.
 std::mutex g_inspection;
 
-// /proc/self/maps, read whole into `text`. False when it cannot be read.
-bool read_maps(std::string *text) {
-    int fd = open("/proc/self/maps", O_RDONLY | O_CLOEXEC);
+// The memory map (/proc/self/maps; another path only in the host test), read
+// whole into `text`. False when it cannot be read, or a read fails part-way.
+bool read_maps(std::string *text, const char *path = "/proc/self/maps") {
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
     if (fd < 0) return false;
     char chunk[16384];
     bool ok = true;
@@ -190,17 +241,25 @@ size_t compare_mapping(const unsigned char *mem, int fd, unsigned long offset,
     return done;
 }
 
-// Compare every executable mapping of the snapshot ending with `suffix`
-// against disk, adding what was measured to `cov`. Returns whether any
-// mapping matched.
-bool compare_one(const char *suffix, const std::vector<Mapping> &mappings,
-                 Coverage *cov, Counters *counters, unsigned char *buf) {
+bool selects(const Target &t, const std::string &path) {
+    return t.exact ? path == t.match : ends_with(path.c_str(), t.match.c_str());
+}
+
+// Compare every executable mapping of the snapshot the target selects
+// against disk, adding what was measured to `cov` and marking each mapping
+// selected. Returns whether any mapping matched.
+bool compare_one(const Target &target, const std::vector<Mapping> &mappings,
+                 Coverage *cov, Counters *counters, unsigned char *buf,
+                 std::vector<bool> *selected) {
     bool any = false;
     long diffBefore = cov->diff;
-    for (const Mapping &m : mappings) {
+    for (size_t index = 0; index < mappings.size(); index++) {
+        const Mapping &m = mappings[index];
         // Select the target BEFORE touching any protection: a mapping that is
         // not measured is never modified.
-        if (!ends_with(m.path.c_str(), suffix)) continue;
+        if (!selects(target, m.path)) continue;
+        if ((*selected)[index]) continue;  // one mapping, one bucket
+        (*selected)[index] = true;
         any = true;
         size_t span = m.end - m.start;
         cov->expected += (long) span;
@@ -243,23 +302,56 @@ bool compare_one(const char *suffix, const std::vector<Mapping> &mappings,
     return any;
 }
 
-// Sum a bucket; append the name of any library that differs to `names`.
-void compare_bucket(const char **suffixes, const std::vector<Mapping> &mappings,
-                    Coverage *cov, Counters *counters,
-                    unsigned char *buf, char *names, size_t names_cap) {
-    for (int i = 0; suffixes[i] != nullptr; i++) {
+// Sum a bucket; append the name of any target that differs to `names`.
+void compare_bucket(const std::vector<Target> &targets, const std::vector<Mapping> &mappings,
+                    Coverage *cov, Counters *counters, unsigned char *buf,
+                    std::vector<bool> *selected, std::string *names) {
+    for (const Target &target : targets) {
         long before = cov->diff;
-        if (!compare_one(suffixes[i], mappings, cov, counters, buf)) continue;
-        if (cov->diff > before) {
-            const char *n = suffixes[i] + 1;  // drop leading '/'
-            size_t used = strlen(names);
-            size_t need = strlen(n) + (used ? 1 : 0);
-            if (used + need + 1 < names_cap) {
-                if (used) strcat(names, ",");
-                strcat(names, n);
+        if (!compare_one(target, mappings, cov, counters, buf, selected)) continue;
+        if (cov->diff > before && names->size() + target.name.size() + 1 < 480) {
+            if (!names->empty()) names->push_back(',');
+            names->append(target.name);
+        }
+    }
+}
+
+// The app's own executable files mapped but in no bucket: counted, and named
+// (sorted, at most kOutsideNames), so the app region never reads as all of the
+// app's code.
+constexpr size_t kOutsideNames = 32;
+
+std::set<std::string> outside_files(const std::vector<Mapping> &mappings,
+                                    const std::vector<bool> &selected, const AppOwn &own) {
+    std::set<std::string> files;
+    for (size_t index = 0; index < mappings.size(); index++) {
+        if (selected[index]) continue;
+        const std::string &path = mappings[index].path;
+        for (const std::string &dir : own.dirs) {
+            if (!dir.empty() && path.compare(0, dir.size(), dir) == 0) {
+                files.insert(path);
+                break;
             }
         }
     }
+    return files;
+}
+
+void append_json_string(std::string *out, const std::string &value) {
+    out->push_back('"');
+    for (unsigned char c : value) {
+        if (c == '"' || c == '\\') {
+            out->push_back('\\');
+            out->push_back((char) c);
+        } else if (c < 0x20) {
+            char escaped[8];
+            snprintf(escaped, sizeof(escaped), "\\u%04x", c);
+            out->append(escaped);
+        } else {
+            out->push_back((char) c);
+        }
+    }
+    out->push_back('"');
 }
 
 bool complete(const Coverage &cov) {
@@ -268,28 +360,49 @@ bool complete(const Coverage &cov) {
 
 }  // namespace
 
-extern "C" JNIEXPORT jstring JNICALL
-Java_com_meraj_necessary_IntegrityProbeManager_nativeCodeIntegrity(
-        JNIEnv *env, jobject /* this */) {
+#ifdef NECESSARY_HOST_TEST
+// The host test's witness that comparisons never overlap.
+std::atomic<int> g_in_flight{0};
+std::atomic<int> g_max_in_flight{0};
+#endif
+
+namespace {
+
+// The whole comparison, one at a time in the process: the snapshot, every
+// unlock, read and restore. `maps_path` is /proc/self/maps but in the host test.
+std::string inspect(const char *maps_path, const AppOwn &own) {
     std::lock_guard<std::mutex> one_at_a_time(g_inspection);
+#ifdef NECESSARY_HOST_TEST
+    struct InFlight {
+        InFlight() {
+            int now = ++g_in_flight;
+            int seen = g_max_in_flight.load();
+            while (now > seen && !g_max_in_flight.compare_exchange_weak(seen, now)) {}
+        }
+        ~InFlight() { --g_in_flight; }
+    } in_flight;
+#endif
     Coverage core, ext, app;
     Counters counters;
-    char names[512] = {0};
+    std::string names;
     const char *reason = "";
     std::string snapshot;
     std::vector<Mapping> mappings;
-    if (!read_maps(&snapshot)) {
+    std::set<std::string> outside;
+    if (!read_maps(&snapshot, maps_path)) {
         reason = "maps_unreadable";
     } else if (snapshot.empty()) {
         reason = "maps_empty";
     } else {
         mappings = executable_mappings(snapshot);
+        std::vector<bool> selected(mappings.size(), false);
         unsigned char *buf = (unsigned char *) malloc(kChunk);
-        if (!buf) return nullptr;
-        compare_bucket(kCore, mappings, &core, &counters, buf, names, sizeof(names));
-        compare_bucket(kExt, mappings, &ext, &counters, buf, names, sizeof(names));
-        compare_bucket(kApp, mappings, &app, &counters, buf, names, sizeof(names));
+        if (!buf) return std::string();
+        compare_bucket(named_targets(kCore), mappings, &core, &counters, buf, &selected, &names);
+        compare_bucket(named_targets(kExt), mappings, &ext, &counters, buf, &selected, &names);
+        compare_bucket(app_targets(own), mappings, &app, &counters, buf, &selected, &names);
         free(buf);
+        outside = outside_files(mappings, selected, own);
         if (core.found + ext.found + app.found == 0) reason = "no_target_mapped";
     }
 
@@ -308,8 +421,7 @@ Java_com_meraj_necessary_IntegrityProbeManager_nativeCodeIntegrity(
              "\"app_expected_bytes\":%ld,\"app_skipped_bytes\":%ld,"
              "\"app_unreadable_bytes\":%ld,\"app_complete\":%s,"
              "\"xom_regions_unlocked\":%d,\"xom_regions_unreadable\":%d,"
-             "\"protect_restore_failures\":%d,"
-             "\"diffed_libs\":\"%s\"}",
+             "\"protect_restore_failures\":%d,\"app_outside_count\":%d,",
              checked ? "true" : "false", checked ? "" : reason,
              core.diff,
              core.compared, core.diff,
@@ -319,8 +431,47 @@ Java_com_meraj_necessary_IntegrityProbeManager_nativeCodeIntegrity(
              app.compared, app.diff, app.withDiff,
              app.expected, app.skipped, app.unreadable, complete(app) ? "true" : "false",
              counters.xomUnlocked, counters.xomUnreadable,
-             counters.restoreFailures,
-             names);
+             counters.restoreFailures, (int) outside.size());
+    std::string out(json);
+    out.append("\"app_outside_files\":[");
+    std::vector<std::string> listed;
+    for (const std::string &path : outside) listed.push_back(base_name(path));
+    std::sort(listed.begin(), listed.end());
+    listed.erase(std::unique(listed.begin(), listed.end()), listed.end());
+    for (size_t i = 0; i < listed.size() && i < kOutsideNames; i++) {
+        if (i) out.push_back(',');
+        append_json_string(&out, listed[i].substr(0, 128));
+    }
+    out.append("],\"diffed_libs\":");
+    append_json_string(&out, names);
+    out.push_back('}');
+    return out;
+}
 
-    return env->NewStringUTF(json);
+std::vector<std::string> strings_of(JNIEnv *env, jobjectArray array) {
+    std::vector<std::string> values;
+    if (array == nullptr) return values;
+    jsize length = env->GetArrayLength(array);
+    for (jsize i = 0; i < length; i++) {
+        jstring item = (jstring) env->GetObjectArrayElement(array, i);
+        if (item == nullptr) continue;
+        const char *chars = env->GetStringUTFChars(item, nullptr);
+        if (chars != nullptr) {
+            values.emplace_back(chars);
+            env->ReleaseStringUTFChars(item, chars);
+        }
+        env->DeleteLocalRef(item);
+    }
+    return values;
+}
+
+}  // namespace
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_meraj_necessary_IntegrityProbeManager_nativeCodeIntegrity(
+        JNIEnv *env, jobject /* this */, jobjectArray app_apks, jobjectArray app_dirs) {
+    AppOwn own{strings_of(env, app_apks), strings_of(env, app_dirs)};
+    std::string json = inspect("/proc/self/maps", own);
+    if (json.empty()) return nullptr;
+    return env->NewStringUTF(json.c_str());
 }

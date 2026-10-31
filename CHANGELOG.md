@@ -15,6 +15,26 @@
   `NATIVE_STEPUP_ERROR` with its causes, as every other channel does, instead of Flutter's generic error.
 - Android: `network` puts a listing of the interfaces that failed — whole, or for one interface — in
   `unread` as `interfaces`, where an empty or short list used to read as "no such interface".
+- The release review's other items, checked again at every place they apply:
+  - Android (collector 10): the `app` region of the code comparison is the app's own — the APKs it was
+    installed from, by their exact paths, and the libraries the SDK names. It took every mapping ending
+    in `.apk`, so another package's code the app loads (the WebView's, a Play services module's) counted
+    as the app's. The app's own executable files mapped outside the region — a library another plugin
+    extracted, the app's Java and Kotlin compiled by Android — are counted in the new
+    `app_outside_count` and named in `app_outside_files`, so the report says what the region leaves out.
+  - iOS (collector 8): an image is compared only with the build that is running. An app updated while
+    it ran — TrollStore installs over a running app — compared the old code in memory with the new
+    file and reported many bytes changed that nobody changed; such an image is now skipped with its
+    `__text` bytes, named with why, and `app_complete` is false.
+  - iOS: an image dyld counts but gives no name or header for (one unloading as the list is read) is no
+    longer dropped: it counts as an app image not read in `code_integrity`, and in `unread` as
+    `image_names` in `dyld_images`.
+  - Android: an Accessibility service the system did not describe is counted in `unread`, no longer
+    dropped — it used to read as a service hiding from the Accessibility manager.
+  - Both platforms: `local_addresses` says `truncated` when the phone had more than the 32 addresses a
+    list holds.
+  - iOS: making and deleting a key run one at a time in the process, whichever Flutter engine asks, as
+    on Android since 0.1.4.
 - Android 9 and 10: a step-up approval that waits for the system's passcode screen can no longer hold
   every later one at `STEPUP_BUSY`. When the screen fails to open, the approval fails with its causes
   and nothing waits; when the activity that asked is gone for good, the approval ends as

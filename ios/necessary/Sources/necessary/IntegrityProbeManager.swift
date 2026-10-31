@@ -33,7 +33,7 @@ final class IntegrityProbeManager {
     /// What the reads mean - the coverage tally, the text span's checks, the
     /// one location read - is in ProbeReads.swift, which needs no Apple-only
     /// framework and so can be tested on any Swift toolchain.
-    private static let collectorVersion = 7
+    private static let collectorVersion = 8
     /// Sent with every scan whether or not the server asked, like
     /// code_integrity below, so no older client breaks.
     private static let volunteeredProbes = ["device", "network"]
@@ -289,8 +289,10 @@ final class IntegrityProbeManager {
         }
         defer { freeifaddrs(head) }
         var addresses: [[String: Any]] = []
+        // More than a list holds is said, never cut off unsaid (collector 8).
+        var truncated = false
         var cursor: UnsafeMutablePointer<ifaddrs>? = first
-        while let entry = cursor, addresses.count < 32 {
+        while let entry = cursor {
             cursor = entry.pointee.ifa_next
             let flags = entry.pointee.ifa_flags
             guard (flags & UInt32(IFF_UP)) != 0, (flags & UInt32(IFF_LOOPBACK)) == 0,
@@ -305,12 +307,16 @@ final class IntegrityProbeManager {
             if text.isEmpty || text.lowercased().hasPrefix("fe80") || text.hasPrefix("169.254") {
                 continue
             }
+            if addresses.count >= 32 {
+                truncated = true
+                break
+            }
             addresses.append([
                 "interface": String(cString: entry.pointee.ifa_name),
                 "address": text,
             ])
         }
-        return ["status": "ok", "addresses": addresses]
+        return ["status": "ok", "addresses": addresses, "truncated": truncated]
     }
 
     private func probeAppIdentity() -> [String: Any] {
@@ -446,7 +452,11 @@ final class IntegrityProbeManager {
 
         for index in 0..<_dyld_image_count() {
             guard let namePointer = _dyld_get_image_name(index),
-                  let header = _dyld_get_image_header(index) else { continue }
+                  let header = _dyld_get_image_header(index) else {
+                // Counted, never dropped: it may be the app's (collector 8).
+                images.append(ProbeReads.unlistedImage(index: Int(index)))
+                continue
+            }
             let path = String(cString: namePointer)
 
             // Anything outside our own bundle is in the shared cache. Counted,
@@ -482,10 +492,25 @@ final class IntegrityProbeManager {
         path: String, header: UnsafePointer<mach_header>, slide: Int
     ) -> ProbeReads.ImageOutcome {
         let span: ProbeReads.TextSpan
-        switch textSpan(of: header) {
+        let read = textSpan(of: header)
+        switch read.span {
         case .success(let found):
             span = found
         case .failure(let problem):
+            return .skipped(textBytes: problem.textSize, why: problem.reason)
+        }
+
+        // The file must be the build that is running (collector 8): an app
+        // updated while it ran has the old code in memory and the new file on
+        // disk. Its header and load commands are read from the file and its
+        // LC_UUID compared with the loaded one's.
+        let commandsSize = Int(UnsafeRawPointer(header)
+            .assumingMemoryBound(to: mach_header_64.self).pointee.sizeofcmds)
+        if let loaded = read.uuid,
+           case .success(let fileHeader) = readFileRange(
+               path: path, offset: 0, length: MemoryLayout<mach_header_64>.size + commandsSize),
+           let problem = ProbeReads.buildProblem(
+               loaded: loaded, onDisk: ProbeReads.machOUUID([UInt8](fileHeader)), textSize: span.textSize) {
             return .skipped(textBytes: problem.textSize, why: problem.reason)
         }
 
@@ -534,16 +559,19 @@ final class IntegrityProbeManager {
     /// commands, and its encryption; ProbeReads decides whether they can be
     /// compared. Every command is read: LC_ENCRYPTION_INFO_64 follows the
     /// segments, so stopping at __TEXT would never see it.
+    /// Where the image's __text lies, and its LC_UUID as loaded (for the build
+    /// check, collector 8).
     private func textSpan(of header: UnsafePointer<mach_header>)
-        -> Result<ProbeReads.TextSpan, ProbeReads.CoverageProblem> {
+        -> (span: Result<ProbeReads.TextSpan, ProbeReads.CoverageProblem>, uuid: [UInt8]?) {
         let raw = UnsafeRawPointer(header)
         let header64 = raw.assumingMemoryBound(to: mach_header_64.self)
         guard header64.pointee.magic == 0xfeed_facf else {
-            return .failure(ProbeReads.CoverageProblem(reason: "not a 64-bit Mach-O image", textSize: 0))
+            return (.failure(ProbeReads.CoverageProblem(reason: "not a 64-bit Mach-O image", textSize: 0)), nil)
         }
         var cursor = raw.advanced(by: MemoryLayout<mach_header_64>.size)
         var found: Result<ProbeReads.TextSpan, ProbeReads.CoverageProblem>?
         var encryption: (offset: UInt32, size: UInt32, id: UInt32)?
+        var uuid: [UInt8]?
 
         for _ in 0..<header64.pointee.ncmds {
             let command = cursor.assumingMemoryBound(to: load_command.self)
@@ -571,18 +599,21 @@ final class IntegrityProbeManager {
                 let info = cursor.assumingMemoryBound(to: encryption_info_command_64.self)
                 encryption = (offset: info.pointee.cryptoff, size: info.pointee.cryptsize,
                               id: info.pointee.cryptid)
+            } else if command.pointee.cmd == UInt32(LC_UUID) {
+                let command = cursor.assumingMemoryBound(to: uuid_command.self)
+                uuid = withUnsafeBytes(of: command.pointee.uuid) { Array($0) }
             }
             cursor = cursor.advanced(by: Int(command.pointee.cmdsize))
         }
         guard let result = found else {
-            return .failure(ProbeReads.CoverageProblem(reason: "no __TEXT segment", textSize: 0))
+            return (.failure(ProbeReads.CoverageProblem(reason: "no __TEXT segment", textSize: 0)), uuid)
         }
         if case .success(let span) = result, let crypt = encryption,
            let problem = ProbeReads.encryptionProblem(
                cryptOffset: crypt.offset, cryptSize: crypt.size, cryptID: crypt.id, span: span) {
-            return .failure(problem)
+            return (.failure(problem), uuid)
         }
-        return result
+        return (result, uuid)
     }
 
     /// Mach-O stores segment and section names as a fixed 16-byte field that is
@@ -833,10 +864,14 @@ final class IntegrityProbeManager {
     private func probeDyldImages() -> [String: Any] {
         var tokens = Set<String>()
         var suspiciousCount = 0
+        var unnamed = 0
         let imageCount = _dyld_image_count()
 
         for index in 0..<imageCount {
-            guard let raw = _dyld_get_image_name(index) else { continue }
+            guard let raw = _dyld_get_image_name(index) else {
+                unnamed += 1
+                continue
+            }
             let name = String(cString: raw).lowercased()
             var matched = false
             for token in IntegrityProbeManager.suspiciousImageTokens
@@ -847,12 +882,16 @@ final class IntegrityProbeManager {
             if matched { suspiciousCount += 1 }
         }
 
-        return [
+        var result: [String: Any] = [
             "status": "ok",
             "suspicious_tokens": Array(tokens).sorted(),
             "suspicious_image_count": suspiciousCount,
             "image_count": Int(imageCount),
         ]
+        // A name dyld did not give could be the one listed (collector 8).
+        let unread = ProbeReads.unnamedImages(unnamed, of: Int(imageCount))
+        if !unread.isEmpty { result["unread"] = unread }
+        return result
     }
 
     private func probeEnvironment() -> [String: Any] {

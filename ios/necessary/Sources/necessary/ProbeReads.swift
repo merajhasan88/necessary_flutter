@@ -96,6 +96,54 @@ enum ProbeReads {
         return got == wanted ? nil : "unreadable: \(got) of \(wanted) bytes read"
     }
 
+    /// The LC_UUID of a 64-bit Mach-O image, from its header and load commands
+    /// as read from its file, or nil when they hold none or cannot be walked.
+    static func machOUUID(_ bytes: [UInt8]) -> [UInt8]? {
+        func word(_ at: Int) -> Int {
+            Int(bytes[at]) | Int(bytes[at + 1]) << 8 | Int(bytes[at + 2]) << 16 | Int(bytes[at + 3]) << 24
+        }
+        guard bytes.count >= 32, word(0) == 0xfeed_facf else { return nil }
+        var offset = 32
+        for _ in 0..<word(16) {
+            guard offset + 8 <= bytes.count else { return nil }
+            let command = word(offset), size = word(offset + 4)
+            guard size >= 8, offset + size <= bytes.count else { return nil }
+            if command == 0x1b {  // LC_UUID
+                return size >= 24 ? Array(bytes[(offset + 8)..<(offset + 24)]) : nil
+            }
+            offset += size
+        }
+        return nil
+    }
+
+    /// Whether the file on disk is the build that was loaded: its LC_UUID
+    /// against the loaded image's. An app updated while it ran -- TrollStore
+    /// installs over a running app, an in-place update, a development install --
+    /// runs the old code with the new file on disk, and the two then differ in
+    /// many bytes nobody changed: such an image is skipped with its __text
+    /// bytes, never compared. Nil when they match, or the loaded image has no
+    /// LC_UUID to tell by.
+    static func buildProblem(loaded: [UInt8]?, onDisk: [UInt8]?, textSize: Int) -> CoverageProblem? {
+        guard let loaded = loaded, loaded != onDisk else { return nil }
+        return CoverageProblem(
+            reason: "another build on disk than the one running (LC_UUID differs): the app was updated while it ran",
+            textSize: textSize)
+    }
+
+    /// An image dyld counts but gives no name or header for (it is being
+    /// unloaded as the list is walked): never dropped unsaid. It may be the
+    /// app's, so it is an app image that could not be read, with no bytes.
+    static func unlistedImage(index: Int) -> AppImage {
+        AppImage(path: "image \(index)", isMainExecutable: false,
+                 outcome: .unreadable(textBytes: 0, why: "dyld gave no name or header for it"))
+    }
+
+    /// The images whose names dyld did not give, as `unread` says it: never a
+    /// shorter list read as all of them.
+    static func unnamedImages(_ missing: Int, of total: Int) -> [String: String] {
+        missing > 0 ? ["image_names": "\(missing) of \(total) could not be read"] : [:]
+    }
+
     /// How one app image's comparison ended.
     enum ImageOutcome: Equatable {
         /// Compared: its __text bytes and how many differ, and the same for

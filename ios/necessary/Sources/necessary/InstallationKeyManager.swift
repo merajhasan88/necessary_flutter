@@ -27,6 +27,11 @@ struct InstallationKeyFailure: Error {
 final class InstallationKeyManager {
     private static let channelKeyVersion = 2
     private static let maxPayloadBytes = 65536
+    /// Making and deleting the key run one at a time in the process, whichever
+    /// engine asks: two first starts at once could each find no key and each
+    /// add one under the same tag. Recursive: a key found dead is deleted
+    /// while it is being made.
+    private static let keyLock = NSRecursiveLock()
 
     private let alias: String
     private let tag: Data
@@ -41,6 +46,8 @@ final class InstallationKeyManager {
     // MARK: - Channel operations
 
     func getOrCreateKey() throws -> [String: Any] {
+        Self.keyLock.lock()
+        defer { Self.keyLock.unlock() }
         var created = false
         var key = try loadKey()
 
@@ -147,6 +154,8 @@ final class InstallationKeyManager {
 
     @discardableResult
     func deleteKey() throws -> Bool {
+        Self.keyLock.lock()
+        defer { Self.keyLock.unlock() }
         let query: [String: Any] = [
             kSecClass as String: kSecClassKey,
             kSecAttrApplicationTag as String: tag,
@@ -332,6 +341,9 @@ final class InstallationKeyManager {
 final class StepUpKeyManager {
     private static let maxPayloadBytes = 65536
     private static let labelPrefix = "stepup:"
+    /// As for the installation key: making and deleting run one at a time in
+    /// the process. Never held while the person is asked.
+    private static let keyLock = NSRecursiveLock()
 
     private let alias: String
     private let tag: Data
@@ -344,6 +356,8 @@ final class StepUpKeyManager {
     // MARK: - Channel operations
 
     func getOrCreateKey(factor: String) throws -> [String: Any] {
+        Self.keyLock.lock()
+        defer { Self.keyLock.unlock() }
         guard factor == "passcode" || factor == "biometric" else {
             throw InstallationKeyFailure(
                 code: "INVALID_ARGUMENT",
@@ -489,6 +503,8 @@ final class StepUpKeyManager {
 
     @discardableResult
     func deleteKey() throws -> Bool {
+        Self.keyLock.lock()
+        defer { Self.keyLock.unlock() }
         let query: [String: Any] = [
             kSecClass as String: kSecClassKey,
             kSecAttrApplicationTag as String: tag,

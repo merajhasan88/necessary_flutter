@@ -261,12 +261,16 @@ The app's native code, and the system libraries it uses, compared in memory with
 that patches code in memory changes bytes there, whatever the tool is called. Three regions: `core` —
 the C library and the Android runtime (`libc.so`, `libart.so`); `ext` — other system libraries that
 hooks aim at (`libc++.so`, `libssl.so`, `libcrypto.so`, `libandroid_runtime.so`, `libbinder.so`); `app`
-— the app's own native code: what is mapped from its APK, and beside the APK the libraries the SDK
-names (the Flutter SDK: the Flutter engine, `libflutter.so`, and the compiled Dart, `libapp.so`).
-That is a selection, and it depends on how the app is packaged: a build that keeps its native
-libraries in the APK (the default) has all of them measured; one that extracts them leaves those under
-other names — another plugin's, say — outside `app`. Code compiled as the app runs has no file to be
-compared with.
+— the app's own native code: what is mapped from the APKs the app was installed from (its base APK and
+its split APKs, by their exact paths — never another package's APK the app has loaded code from, such
+as the WebView's), and the libraries the SDK names wherever they are (the Flutter SDK: the Flutter
+engine, `libflutter.so`, and the compiled Dart, `libapp.so`). That is a selection, and it depends on
+how the app is packaged: a build that keeps its native libraries in its APKs (the default) has all of
+them measured; one that extracts them leaves those under other names — another plugin's, say — outside
+`app`. The report says what it leaves out: every executable file of the app's own that is mapped but
+not in `app` — an extracted library, the app's Java and Kotlin compiled by Android — is counted in
+`app_outside_count` and named in `app_outside_files`. Code compiled as the app runs has no file to be
+compared with, and is in neither.
 In each region expected = compared + skipped + unreadable, and `<region>_complete` is true exactly when
 some code was expected and all of it was compared. Any differing byte is code changed while the app
 runs, which should never happen. Memory that Android 10 and later maps execute-only is made readable for
@@ -306,6 +310,8 @@ names no target; every region is then incomplete.
 | `protect_restore_failures` | integer, count |  | execute-only memory whose protection could not be put back after the copy |
 | `xom_regions_unlocked` | integer, count |  | execute-only regions made readable for the comparison |
 | `xom_regions_unreadable` | integer, count |  | execute-only regions that could not be made readable: their bytes count as unreadable |
+| `app_outside_count` | integer, count |  | executable files of the app's own (in its install or data directories) mapped but not in `app`, so not compared (collector 10) |
+| `app_outside_files` | list |  | their file names, sorted, at most 32 (collector 10) |
 | `elapsed_ms` | integer, milliseconds |  | how long the comparison took |
 
 ### `developer_settings`
@@ -387,6 +393,7 @@ link-local address can carry the hardware address, which Android hides from apps
 | Field | Type | Needed | Meaning |
 |---|---|---|---|
 | `addresses` | list | yes | each an `interface` (its name) and an `address` (IPv4 or IPv6), at most 32 |
+| `truncated` | true/false |  | the phone had more than the 32 addresses a list holds (Android collector 10, iOS collector 8) |
 
 ### `accessibility`
 
@@ -564,7 +571,8 @@ was written is removed at once.
 Instrumentation and jailbreak names among the libraries loaded into the app: Frida and its Gadget,
 Objection, Cynject, Cycript, Substrate and MobileSubstrate, Substitute, libhooker, ElleKit, Cydia,
 Shadow, FLEX and libSparkAppList. It matches names, so a renamed library escapes it; `code_integrity`
-compares the code itself.
+compares the code itself. A library whose name the loader did not give (one unloading as the list is
+read) is in `unread` as `image_names`, since it could be one of those.
 
 **When:** your backend asks for it.
 
@@ -681,6 +689,7 @@ addresses are left out.
 | Field | Type | Needed | Meaning |
 |---|---|---|---|
 | `addresses` | list | yes | each an `interface` (its name) and an `address` (IPv4 or IPv6), at most 32 |
+| `truncated` | true/false |  | the phone had more than the 32 addresses a list holds (Android collector 10, iOS collector 8) |
 
 ### `screen_capture`
 
