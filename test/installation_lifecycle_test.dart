@@ -205,9 +205,91 @@ class _CountingStore extends InstallationStore {
   }
 }
 
+/// A keystore whose signatures wait, once [hold] is set, until [goOn].
+class _HeldSigningKeystore extends _Keystore {
+  _HeldSigningKeystore() : super(holds: false);
+
+  bool hold = false;
+  final Completer<void> reached = Completer<void>();
+  final Completer<void> goOn = Completer<void>();
+
+  @override
+  Future<String> signPayload(String payloadBase64Url) async {
+    if (hold) {
+      if (!reached.isCompleted) {
+        reached.complete();
+      }
+      await goOn.future;
+    }
+    return super.signPayload(payloadBase64Url);
+  }
+}
+
+/// A store whose first step-up marker write waits until [goOn].
+class _HeldMarkerStore extends InstallationStore {
+  _HeldMarkerStore() : super(key: _Keystore(holds: false));
+
+  final Completer<void> reached = Completer<void>();
+  final Completer<void> goOn = Completer<void>();
+
+  @override
+  Future<void> setStepUpReenrolPending(bool pending) async {
+    if (!reached.isCompleted) {
+      reached.complete();
+      await goOn.future;
+    }
+    return super.setStepUpReenrolPending(pending);
+  }
+}
+
+/// A phone that makes no step-up key; or, given [deleteFails], one whose key
+/// the keystore will not delete.
+class _StepUpKeystore extends NativeStepUpKey {
+  _StepUpKeystore({this.makes = false, this.deleteFails});
+
+  final bool makes;
+  final String? deleteFails;
+
+  @override
+  Future<StepUpKeyMetadata> getOrCreateKey({
+    required String factor,
+    required String mode,
+    required int windowSeconds,
+  }) async {
+    if (!makes) {
+      throw NativeKeyException('STEPUP_UNAVAILABLE', 'no screen lock');
+    }
+    return StepUpKeyMetadata(
+      publicKey: const <String, dynamic>{
+        'kty': 'EC',
+        'crv': 'P-256',
+        'alg': 'ES256',
+        'x': 'sx',
+        'y': 'sy',
+      },
+      factor: factor,
+      mode: mode,
+      windowSeconds: windowSeconds,
+      securityLevel: 'trusted_execution_environment',
+      hardwareBacked: true,
+      created: true,
+    );
+  }
+
+  @override
+  Future<void> deleteKey() async {
+    if (deleteFails != null) {
+      throw NativeKeyException(deleteFails!, 'the keystore refused');
+    }
+  }
+}
+
 final Matcher _interrupted = throwsA(isA<InterruptedCallException>());
 
 void main() {
+  // As in an app: the binding is there, and a plugin with no native side
+  // answers MissingPluginException (a reset then has no step-up key to delete).
+  TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() {
     FlutterSecureStorage.setMockInitialValues(<String, String>{});
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
@@ -380,6 +462,85 @@ void main() {
     await old;
     expect(trust.identity!.installationId, 'held-1');
     expect(await _storedId(), 'held-1');
+  });
+
+  test('a reset while the old registration writes the step-up marker: the '
+      'reset waits for the write, and the marker never outlives it', () async {
+    final _HeldMarkerStore store = _HeldMarkerStore();
+    final DeviceTrust trust = DeviceTrust.over(
+      _Backend(),
+      store: store,
+      collector: _Collector(),
+      hintReader: _NoHint(),
+      stepUp: const StepUpOptions(),
+      stepUpKey: _StepUpKeystore(),
+    );
+    final Future<void> old = expectLater(trust.start(), _interrupted);
+    await store.reached.future;
+    bool reset = false;
+    final Future<void> resetting = trust.reset().then((_) => reset = true);
+    await pumpEventQueue();
+    expect(reset, isFalse, reason: 'the reset waits for the write in flight');
+    store.goOn.complete();
+    await resetting;
+    await old;
+    expect(await store.stepUpReenrolPending(), isFalse);
+  });
+
+  test('a reset while a request is signed: the proof is never handed out',
+      () async {
+    final _HeldSigningKeystore key = _HeldSigningKeystore();
+    final DeviceTrust trust = DeviceTrust.over(
+      _Backend(),
+      store: InstallationStore(key: key),
+      collector: _Collector(),
+      hintReader: _NoHint(),
+    );
+    await trust.start();
+    key.hold = true;
+    final Future<void> signing = expectLater(
+      trust.signRequest(method: 'POST', path: '/v1/pay', bearer: 'session'),
+      _interrupted,
+    );
+    await key.reached.future;
+    await trust.reset();
+    key.goOn.complete();
+    await signing;
+  });
+
+  test('a step-up key the keystore will not delete fails the reset, the '
+      'installation gone all the same; none to delete fails nothing', () async {
+    final DeviceTrust trust = DeviceTrust.over(
+      _Backend(),
+      store: InstallationStore(key: _Keystore(holds: false)),
+      collector: _Collector(),
+      hintReader: _NoHint(),
+      stepUp: const StepUpOptions(),
+      stepUpKey: _StepUpKeystore(makes: true, deleteFails: 'KEY_DELETE_FAILED'),
+    );
+    await trust.start();
+    await expectLater(
+      trust.reset(),
+      throwsA(
+        isA<NativeKeyException>().having(
+          (NativeKeyException error) => error.code,
+          'code',
+          'KEY_DELETE_FAILED',
+        ),
+      ),
+    );
+    expect(trust.identity, isNull);
+    expect(await _storedId(), isNull);
+    final DeviceTrust plain = DeviceTrust.over(
+      _Backend(),
+      store: InstallationStore(key: _Keystore(holds: false)),
+      collector: _Collector(),
+      hintReader: _NoHint(),
+      stepUp: const StepUpOptions(),
+      stepUpKey: _StepUpKeystore(deleteFails: 'NATIVE_STEPUP_PLUGIN_MISSING'),
+    );
+    await plain.start();
+    await plain.reset();
   });
 
   test('a reset while a scan collects: its report is never sent', () async {

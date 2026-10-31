@@ -151,6 +151,9 @@ class DeviceTrust {
   Future<void>? _resetting;
   Future<void>? _saving;
   Future<void>? _reenrolling;
+  // The persistent writes and key changes running now (_mutate): a reset
+  // waits for each before it deletes, so none outlives the deletion.
+  final Set<Future<void>> _mutations = <Future<void>>{};
   StepUpKeyMetadata? _offeredStepUpKey;
   ReinstallHint? _hint;
   bool _hintRead = false;
@@ -202,6 +205,22 @@ class DeviceTrust {
     final InstallationIdentity loaded = await _store.loadOrCreate();
     _current(generation);
     return _identity ??= loaded;
+  }
+
+  /// A persistent write or a key change for the installation [generation]:
+  /// refused before it starts when reset() or close() has ended that
+  /// installation, and waited for by a reset that began while it ran. The
+  /// order is the whole guarantee: _endCalls() moves the generation on at
+  /// once, in the same turn as reset() is called, so a write asked for after
+  /// that throws here without writing; one asked for before is in
+  /// [_mutations], which the reset waits for before it deletes anything.
+  Future<T> _mutate<T>(int generation, Future<T> Function() change) {
+    _current(generation);
+    final Future<T> running = change();
+    final Future<void> tracked = running.then<void>((_) {}, onError: (_) {});
+    _mutations.add(tracked);
+    tracked.whenComplete(() => _mutations.remove(tracked));
+    return running;
   }
 
   /// Throws when reset() or close() ended the installation [generation]
@@ -269,6 +288,7 @@ class DeviceTrust {
     final Future<void>? saving = _saving;
     final Future<void>? reenrolling = _reenrolling;
     final Future<void>? earlier = _resetting;
+    final List<Future<void>> changing = List<Future<void>>.of(_mutations);
     _endCalls();
     _offeredStepUpKey = null;
     _hint = null;
@@ -279,19 +299,31 @@ class DeviceTrust {
       // writes outlives the deletion.
       // So does a re-enrolment: its key, which a backend may already have
       // taken, is deleted after it, and the marker it writes is cleared.
+      // So does every write and key change still running (_mutate): the
+      // step-up marker, a step-up key being made.
       await Future.wait(<Future<void>>[
         if (loading != null) loading.then<void>((_) {}, onError: (_) {}),
         if (saving != null) saving.then<void>((_) {}, onError: (_) {}),
         ?reenrolling,
+        ...changing,
       ]);
       await _store.clear();
       // The step-up key goes with the installation, as on a reinstall: kept,
-      // it would link the next installation to this one.
+      // it would link the next installation to this one. None to delete is
+      // no failure; nor is a phone or a build with no step-up key at all. A
+      // key that stays is: reset() fails with it, the installation itself
+      // gone, so the app knows and may call reset() again.
       try {
         await _stepUpKey.deleteKey();
-      } catch (_) {
-        // Best effort: none to delete, none this phone can make, or no
-        // native side at all; the installation itself is gone either way.
+      } on NativeKeyException catch (error) {
+        if (error.code != 'NATIVE_STEPUP_PLUGIN_MISSING' &&
+            error.code != 'UNSUPPORTED_ANDROID_VERSION') {
+          throw NativeKeyException(
+            error.code,
+            'The installation was reset, but its step-up key could not be '
+            'deleted: ${error.message} Call reset() again.',
+          );
+        }
       }
     }();
     // Later loads wait for the deletion, whatever came of it; the caller of
@@ -402,9 +434,9 @@ class DeviceTrust {
         ? registered
         : null;
     if (offered == null || bound == false) {
-      await _store.setStepUpReenrolPending(true);
+      await _mutate(generation, () => _store.setStepUpReenrolPending(true));
     } else if (bound == true) {
-      await _store.setStepUpReenrolPending(false);
+      await _mutate(generation, () => _store.setStepUpReenrolPending(false));
     }
     final bool pending =
         offered != null && bound != true && await _store.stepUpReenrolPending();
@@ -428,10 +460,13 @@ class DeviceTrust {
     StepUpKeyMetadata? key;
     NativeKeyException? unavailable;
     try {
-      key = await _stepUpKey.getOrCreateKey(
-        factor: options.factor,
-        mode: options.mode,
-        windowSeconds: options.windowSeconds,
+      key = await _mutate(
+        generation,
+        () => _stepUpKey.getOrCreateKey(
+          factor: options.factor,
+          mode: options.mode,
+          windowSeconds: options.windowSeconds,
+        ),
       );
     } on NativeKeyException catch (error) {
       unavailable = error;
@@ -567,7 +602,9 @@ class DeviceTrust {
     String? appPin,
     String? reportId,
   }) async {
+    final int generation = _generation;
     final InstallationIdentity identity = await loadIdentity();
+    _current(generation);
     StepUpApproval? approval;
     if (stepUp) {
       // Only the key the backend received at registration: a key made later
@@ -595,6 +632,9 @@ class DeviceTrust {
       encodedBody: body,
       stepUp: approval,
     );
+    // The installation reset, or the client closed, while the phone signed:
+    // the proof is of an installation that is gone, and is never handed out.
+    _current(generation);
     if (appPin != null) {
       final AppPinOptions? options = this.appPin;
       if (options == null) {
@@ -609,6 +649,7 @@ class DeviceTrust {
         request: proof,
         path: options.proofPath,
       );
+      _current(generation);
     }
     return reportId == null ? proof : proof.withIntegrityReport(reportId);
   }
@@ -659,17 +700,19 @@ class DeviceTrust {
       if (replace) {
         // From here the phone's key and the backend's differ until the
         // backend takes the new one: approvals wait for that.
-        _current(generation);
-        await _store.setStepUpReenrolPending(true);
+        await _mutate(generation, () => _store.setStepUpReenrolPending(true));
         _current(generation);
         _offeredStepUpKey = null;
         stepUpUnavailable = _reenrolPending();
-        await _stepUpKey.deleteKey();
+        await _mutate(generation, _stepUpKey.deleteKey);
       }
-      return _stepUpKey.getOrCreateKey(
-        factor: options.factor,
-        mode: options.mode,
-        windowSeconds: options.windowSeconds,
+      return _mutate(
+        generation,
+        () => _stepUpKey.getOrCreateKey(
+          factor: options.factor,
+          mode: options.mode,
+          windowSeconds: options.windowSeconds,
+        ),
       );
     }
 
@@ -729,8 +772,7 @@ class DeviceTrust {
       nonce: nonce,
     );
     final Map<String, dynamic> answer = await send(proof);
-    _current(generation);
-    await _store.setStepUpReenrolPending(false);
+    await _mutate(generation, () => _store.setStepUpReenrolPending(false));
     _current(generation);
     _offeredStepUpKey = key;
     stepUpUnavailable = null;
@@ -755,13 +797,18 @@ class DeviceTrust {
         'The app PIN is off: DeviceTrust(appPin: const AppPinOptions()).',
       );
     }
-    return client.setAppPin(
+    final int generation = _generation;
+    final InstallationIdentity identity = await loadIdentity();
+    _current(generation);
+    final Map<String, dynamic> answer = await client.setAppPin(
       session: session,
-      identity: await loadIdentity(),
+      identity: identity,
       pin: pin,
       reauthentication: reauthentication,
       path: options.path,
     );
+    _current(generation);
+    return answer;
   }
 
   /// Asks the person for the location permission, for the location

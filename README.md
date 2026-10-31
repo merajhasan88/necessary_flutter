@@ -259,7 +259,8 @@ Step-up and the app PIN combine: your backend decides which requests need which.
 | The Flutter engine is torn down | iOS drops the protection, its covers and its observers with the engine |
 | Two calls at once | `start()`, `prove()`, `loadIdentity()` and the same `scan()` run once, and the second caller gets the first's result; scans for different operations, or asked after the personal measurements changed, run apart |
 | A step-up prompt is open | on iOS the plugin's other calls — a scan, a request's signature — wait until the person answers it; Android runs them meanwhile |
-| `reset()` or `close()` while calls run | the calls end with `InterruptedCallException` and keep nothing — no session, no installation ID, no report sent; after a reset, new calls wait for the deletion and never join one made before |
+| `reset()` or `close()` while calls run | the calls end with `InterruptedCallException` and keep nothing — no session, no installation ID, no report sent, no request proof or app PIN answer handed out; a reset first waits for every write and key change still running, so none outlives it; after a reset, new calls wait for the deletion and never join one made before. A proof handed out before the reset, or a request already sent, is beyond it: reset is local |
+| The step-up key cannot be deleted | `reset()` fails with that `NativeKeyException` (`KEY_DELETE_FAILED`), the installation itself gone: call it again. None to delete, or no step-up on the phone, is no failure |
 | A call abandoned, or its answer lost | a scan is simply asked for again — a challenge serves once; the plugin never sends a signed request twice: sign it again, and let your backend decide whether the first one reached it |
 | A report over 65,536 bytes | it is never sent: the app lists the contract lets a collector shorten are shortened, and say `truncated`; anything else answers an `ApiException` `report_too_large` |
 

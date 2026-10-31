@@ -1,5 +1,11 @@
 ## Unreleased
 
+- `reset()` and `close()` hold for every call: `signRequest` and `setAppPin` end with
+  `InterruptedCallException` when the installation was reset meanwhile, never handing out a proof or an
+  answer of the installation that is gone; every persistent write and key change — the step-up marker, a
+  step-up key being made or replaced — is refused once a reset has begun and waited for when it began
+  before, so none outlives the reset. A step-up key the keystore will not delete now fails `reset()`
+  (`KEY_DELETE_FAILED`), the installation itself gone, instead of being passed over.
 - Android: the step-up key is deleted only when Android says it can never sign again
   (`KeyPermanentlyInvalidatedException`). A lookup that cannot establish whether it is usable — on
   Android 9 a binder error also reads as "no key entry", and a failed key-characteristics query surfaces
