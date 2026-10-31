@@ -2,10 +2,13 @@
 library;
 
 /// A failure of the phone's keystore or of a prompt: [code] says which --
+/// `KEY_UNAVAILABLE` (Android's keystore could not be reached for the
+/// installation key; no key was made over it: try again, or reset()),
 /// `STEPUP_KEY_INVALIDATED` (the key can never sign again: re-enrol),
 /// `STEPUP_KEY_UNAVAILABLE` (the keystore could not say whether the key is
-/// usable; it was kept: try again, or re-enrol), `STEPUP_CANCELLED`,
-/// `STEPUP_REENROL_PENDING` and the like -- and [message] says it in words.
+/// usable, or could not be reached; it was kept: try again, or re-enrol),
+/// `STEPUP_CANCELLED`, `STEPUP_REENROL_PENDING` and the like -- and [message]
+/// says it in words.
 class NativeKeyException implements Exception {
   NativeKeyException(this.code, this.message);
 

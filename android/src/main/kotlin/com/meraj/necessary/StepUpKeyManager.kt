@@ -63,6 +63,10 @@ class StepUpKeyManager(private val context: Context) {
         // The hardware window used where per-use passcode is not available
         // (API < 30).
         const val LEGACY_WINDOW_SECONDS = 30
+
+        // Making and deleting the key run one at a time in the process,
+        // whichever engine asks (as for the installation key).
+        private val keyLock = Any()
     }
 
     private class KeyAuth(val factor: String, val mode: String, val windowSeconds: Int)
@@ -76,11 +80,18 @@ class StepUpKeyManager(private val context: Context) {
     private val keyAlias: String =
         "${context.packageName}.device_recognition.stepup_key.v1"
 
+    // Never holds a key: deleting it says whether the keystore answers
+    // (KeyPresence).
+    private val probeAlias: String = "$keyAlias.probe"
+
     private var pendingConfirm: PendingConfirm? = null
 
     // MARK: channel operations
 
-    fun getOrCreateKey(factor: String, mode: String, windowSeconds: Int): Map<String, Any> {
+    fun getOrCreateKey(factor: String, mode: String, windowSeconds: Int): Map<String, Any> =
+        synchronized(keyLock) { loadOrMakeKey(factor, mode, windowSeconds) }
+
+    private fun loadOrMakeKey(factor: String, mode: String, windowSeconds: Int): Map<String, Any> {
         requireSupportedAndroid()
         if (factor != FACTOR_PASSCODE && factor != FACTOR_BIOMETRIC) {
             throw InstallationKeyFailure("INVALID_ARGUMENT", "factor must be passcode or biometric.")
@@ -95,10 +106,16 @@ class StepUpKeyManager(private val context: Context) {
             )
         }
         // An existing key is checked before the screen lock: removing the lock
-        // is what kills it, so this is where the app can say so precisely.
+        // is what kills it, so this is where the app can say so precisely. A
+        // key is made only where the keystore, answering, holds none: a lookup
+        // that failed reads as "no key", and generating would replace the key
+        // the backend holds.
         val keyStore = loadKeyStore()
-        if (keyStore.containsAlias(keyAlias)) {
-            liveEntry(keyStore)
+        val found = presence(keyStore)
+        val existing = when (found.answer) {
+            KeyPresence.Answer.PRESENT -> liveEntry(keyStore)
+            KeyPresence.Answer.ABSENT -> null
+            KeyPresence.Answer.UNAVAILABLE -> throw keyUnavailable(found.cause)
         }
         requireDeviceCredential()
         if (factor == FACTOR_BIOMETRIC && Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
@@ -108,12 +125,11 @@ class StepUpKeyManager(private val context: Context) {
             )
         }
 
-        var created = false
-        if (!keyStore.containsAlias(keyAlias)) {
+        val created = existing == null
+        if (created) {
             generateKeyPair(keyStore, factor, mode, windowSeconds)
-            created = true
         }
-        val entry = liveEntry(keyStore)
+        val entry = existing ?: liveEntry(keyStore)
         val publicKey = entry.certificate.publicKey as? ECPublicKey
             ?: throw InstallationKeyFailure(
                 "INVALID_PUBLIC_KEY",
@@ -178,11 +194,14 @@ class StepUpKeyManager(private val context: Context) {
                 )
             }
             val keyStore = loadKeyStore()
-            if (!keyStore.containsAlias(keyAlias)) {
-                throw InstallationKeyFailure(
+            val found = presence(keyStore)
+            when (found.answer) {
+                KeyPresence.Answer.PRESENT -> {}
+                KeyPresence.Answer.ABSENT -> throw InstallationKeyFailure(
                     "STEPUP_KEY_NOT_FOUND",
                     "No step-up key exists on this installation.",
                 )
+                KeyPresence.Answer.UNAVAILABLE -> throw keyUnavailable(found.cause)
             }
             val entry = liveEntry(keyStore)
             val auth = describeAuth(keyInfo(entry))
@@ -239,16 +258,24 @@ class StepUpKeyManager(private val context: Context) {
         return true
     }
 
-    fun deleteKey(): Boolean {
+    /**
+     * Deletes the key, whatever a lookup says: a lookup that failed reads as
+     * "no key", and skipping the deletion then would leave the key in place
+     * after a reset. Whether one was there is for the answer only.
+     */
+    fun deleteKey(): Boolean = synchronized(keyLock) {
         requireSupportedAndroid()
         val keyStore = loadKeyStore()
-        return try {
+        try {
+            val existed = keyStore.containsAlias(keyAlias)
+            keyStore.deleteEntry(keyAlias)
             if (keyStore.containsAlias(keyAlias)) {
-                keyStore.deleteEntry(keyAlias)
-                true
-            } else {
-                false
+                throw InstallationKeyFailure(
+                    "KEY_DELETE_FAILED",
+                    "AndroidKeyStore did not delete the step-up key: it is still present.",
+                )
             }
+            existed
         } catch (error: GeneralSecurityException) {
             throw InstallationKeyFailure(
                 "KEY_DELETE_FAILED",
@@ -415,7 +442,7 @@ class StepUpKeyManager(private val context: Context) {
      * installation must then re-enrol: the server never accepts a replacement
      * step-up key for an existing installation.
      */
-    private fun discardDeadKey(cause: Throwable): InstallationKeyFailure {
+    private fun discardDeadKey(cause: Throwable): InstallationKeyFailure = synchronized(keyLock) {
         // Say whether the removal actually happened: on an Android 9 phone a
         // dead key's alias survived deleteEntry while the screen lock was off.
         val removal = try {
@@ -425,7 +452,7 @@ class StepUpKeyManager(private val context: Context) {
         } catch (error: Exception) {
             "could not be removed (${error.javaClass.simpleName}: ${error.message})"
         }
-        return InstallationKeyFailure(
+        InstallationKeyFailure(
             "STEPUP_KEY_INVALIDATED",
             "The step-up key was invalidated (the screen lock or enrolled biometrics changed) " +
                 "and $removal. Re-enrol the installation to get a new one. " +
@@ -620,6 +647,20 @@ class StepUpKeyManager(private val context: Context) {
             )
         }
     }
+
+    private fun presence(keyStore: KeyStore): KeyPresence.Found =
+        KeyPresence.of(object : KeyPresence.Keystore {
+            override fun containsKey() = keyStore.containsAlias(keyAlias)
+            override fun deleteProbe() = keyStore.deleteEntry(probeAlias)
+        })
+
+    private fun keyUnavailable(cause: Throwable?) = InstallationKeyFailure(
+        "STEPUP_KEY_UNAVAILABLE",
+        "AndroidKeyStore could not be reached for the step-up key" +
+            (cause?.let { " (${it.javaClass.simpleName}: ${it.message})" } ?: "") +
+            "; the key was kept, never replaced. Try again; if this persists, re-enrol to replace it.",
+        cause,
+    )
 
     private fun keyInfo(entry: KeyStore.PrivateKeyEntry): KeyInfo {
         try {

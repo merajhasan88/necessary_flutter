@@ -47,6 +47,26 @@ class _Keystore implements NativeInstallationKey {
 
 const String _stored = 'recognition.installation_id.v2';
 
+/// A keystore that holds the key but cannot be reached at first: the plugin's
+/// Android side then answers KEY_UNAVAILABLE and makes no key.
+class _UnreachableKeystore extends _Keystore {
+  _UnreachableKeystore() : super(holds: true);
+
+  bool reachable = false;
+
+  @override
+  Future<NativeKeyMetadata> getOrCreateKey() async {
+    if (!reachable) {
+      throw NativeKeyException(
+        'KEY_UNAVAILABLE',
+        'AndroidKeyStore could not be reached for the installation key; the '
+            'key was kept, never replaced.',
+      );
+    }
+    return super.getOrCreateKey();
+  }
+}
+
 Future<String?> _storedId() => const FlutterSecureStorage().read(key: _stored);
 
 /// Answers as the guide says; counts what it was asked.
@@ -344,6 +364,41 @@ void main() {
     await trust.start();
     expect(trust.identity!.installationId, 'held');
     expect(await _storedId(), 'held');
+  });
+
+  test('a keystore that cannot be reached leaves the installation as it was: '
+      'start() fails with KEY_UNAVAILABLE and sends nothing, and the ID is '
+      'kept for the key once the keystore answers', () async {
+    FlutterSecureStorage.setMockInitialValues(<String, String>{
+      _stored: 'kept-installation',
+    });
+    final _UnreachableKeystore keystore = _UnreachableKeystore();
+    final _Backend backend = _Backend();
+    final DeviceTrust trust = DeviceTrust.over(
+      backend,
+      store: InstallationStore(key: keystore),
+      collector: _Collector(),
+      hintReader: _NoHint(),
+    );
+    await expectLater(
+      trust.start(),
+      throwsA(
+        isA<NativeKeyException>().having(
+          (NativeKeyException error) => error.code,
+          'code',
+          'KEY_UNAVAILABLE',
+        ),
+      ),
+    );
+    expect(backend.paths, isEmpty);
+    expect(await _storedId(), 'kept-installation');
+    expect(keystore.holds, isTrue);
+    keystore.reachable = true;
+    final InstallationIdentity again = await InstallationStore(
+      key: keystore,
+    ).loadOrCreate();
+    expect(again.createdThisLaunch, isFalse);
+    expect(again.installationId, 'kept-installation');
   });
 
   test(

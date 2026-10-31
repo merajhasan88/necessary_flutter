@@ -32,7 +32,7 @@ needs Flutter 3.47.
 
 ```yaml
 dependencies:
-  necessary: ^0.1.3
+  necessary: ^0.1.4
 ```
 
 The plugin declares what its own features need. Your app adds only what you choose to use:
@@ -182,8 +182,8 @@ says so to your backend. iOS makes per-use keys only. An app whose backend sets 
 Removing the screen lock, or enrolling another biometric for a biometric key, makes the key unusable:
 an approval then fails with `NativeKeyException` `STEPUP_KEY_INVALIDATED`. On Android the plugin
 deletes the key only when Android itself says so; when the keystore cannot establish whether the key is
-usable — a failure it may recover from — the approval fails with `STEPUP_KEY_UNAVAILABLE` and the key
-is kept: try again later. The person re-enrols a new key with their own re-authentication, which also
+usable, or cannot be reached at all — a failure it may recover from — the approval fails with
+`STEPUP_KEY_UNAVAILABLE` and the key is kept: try again later. The person re-enrols a new key with their own re-authentication, which also
 replaces a key that stays unavailable:
 
 ```dart
@@ -253,6 +253,7 @@ Step-up and the app PIN combine: your backend decides which requests need which.
 | When | What the plugin does |
 |---|---|
 | The key is lost — an Android reinstall, a cleared keystore | `start()` makes a new key and a new installation ID; `trust.identity!.createdThisLaunch` is true, so forget what you kept for the old installation. Your backend links the two only provisionally, by the reinstall hint |
+| Android's keystore cannot be reached | its lookups answer "no such key" then too, so the plugin makes a key only where the keystore, answering, holds none: `start()` fails with `NativeKeyException` `KEY_UNAVAILABLE`, sends nothing and keeps the installation as it is — call it again later; if it persists, `reset()` starts a new installation. Signing answers the same, and a step-up key `STEPUP_KEY_UNAVAILABLE`. Before 0.1.4 a new key was made over the old one |
 | iOS keeps the key across a reinstall | with its ID, the same installation comes back; without it, the plugin proposes a new ID, your backend answers with the one it holds for the key, and the plugin keeps that one |
 | The app's process restarts | nothing is kept in memory: `start()` again finds the same key and installation, and proves it for a new installation session |
 | The activity, a scene or a window is replaced | screen protection follows: Android sets it on each new window; on iOS the cover is placed again, on the window the person sees in each scene, whenever a window becomes key, visible or hidden or a scene comes to the foreground — and protection asked for before any window exists covers the first one. A step-up prompt the recreation cancelled answers `STEPUP_CANCELLED`: ask again |

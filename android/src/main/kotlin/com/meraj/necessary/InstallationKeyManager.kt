@@ -36,19 +36,38 @@ class InstallationKeyManager(private val context: Context) {
         private const val CURVE_NAME = "secp256r1"
         private const val CHANNEL_KEY_VERSION = 2
         private const val MAX_PAYLOAD_BYTES = 65536
+
+        // Making and deleting the key run one at a time in the process,
+        // whichever engine asks: two first starts at once would otherwise each
+        // find no key, and the second would generate over the first's.
+        private val keyLock = Any()
     }
 
     private val keyAlias: String =
         "${context.packageName}.device_recognition.installation_key.v2"
 
-    fun getOrCreateKey(): Map<String, Any> {
+    // Never holds a key: deleting it says whether the keystore answers
+    // (KeyPresence).
+    private val probeAlias: String = "$keyAlias.probe"
+
+    fun getOrCreateKey(): Map<String, Any> = synchronized(keyLock) { loadOrMakeKey() }
+
+    private fun loadOrMakeKey(): Map<String, Any> {
         requireSupportedAndroid()
         val keyStore = loadKeyStore()
         var created = false
 
-        if (!keyStore.containsAlias(keyAlias)) {
-            generateKeyPair(keyStore)
-            created = true
+        // A key is made only where the keystore, answering, holds none: a
+        // lookup that failed reads as "no key", and generating would replace
+        // the installation's key with a new one.
+        val found = presence(keyStore)
+        when (found.answer) {
+            KeyPresence.Answer.PRESENT -> {}
+            KeyPresence.Answer.ABSENT -> {
+                generateKeyPair(keyStore)
+                created = true
+            }
+            KeyPresence.Answer.UNAVAILABLE -> throw keyUnavailable(found.cause)
         }
 
         var entry = privateKeyEntry(keyStore)
@@ -102,11 +121,14 @@ class InstallationKeyManager(private val context: Context) {
         }
 
         val keyStore = loadKeyStore()
-        if (!keyStore.containsAlias(keyAlias)) {
-            throw InstallationKeyFailure(
+        val found = presence(keyStore)
+        when (found.answer) {
+            KeyPresence.Answer.PRESENT -> {}
+            KeyPresence.Answer.ABSENT -> throw InstallationKeyFailure(
                 "KEY_NOT_FOUND",
                 "The Android installation key is missing. Restart the app to create a fresh installation identity.",
             )
+            KeyPresence.Answer.UNAVAILABLE -> throw keyUnavailable(found.cause)
         }
         val entry = privateKeyEntry(keyStore)
 
@@ -125,16 +147,24 @@ class InstallationKeyManager(private val context: Context) {
         }
     }
 
-    fun deleteKey(): Boolean {
+    /**
+     * Deletes the key, whatever a lookup says: a lookup that failed reads as
+     * "no key", and skipping the deletion then would leave the key in place
+     * after a reset. Whether one was there is for the answer only.
+     */
+    fun deleteKey(): Boolean = synchronized(keyLock) {
         requireSupportedAndroid()
         val keyStore = loadKeyStore()
-        return try {
+        try {
+            val existed = keyStore.containsAlias(keyAlias)
+            keyStore.deleteEntry(keyAlias)
             if (keyStore.containsAlias(keyAlias)) {
-                keyStore.deleteEntry(keyAlias)
-                true
-            } else {
-                false
+                throw InstallationKeyFailure(
+                    "KEY_DELETE_FAILED",
+                    "AndroidKeyStore did not delete the installation key: it is still present.",
+                )
             }
+            existed
         } catch (error: GeneralSecurityException) {
             throw InstallationKeyFailure(
                 "KEY_DELETE_FAILED",
@@ -143,6 +173,20 @@ class InstallationKeyManager(private val context: Context) {
             )
         }
     }
+
+    private fun presence(keyStore: KeyStore): KeyPresence.Found =
+        KeyPresence.of(object : KeyPresence.Keystore {
+            override fun containsKey() = keyStore.containsAlias(keyAlias)
+            override fun deleteProbe() = keyStore.deleteEntry(probeAlias)
+        })
+
+    private fun keyUnavailable(cause: Throwable?) = InstallationKeyFailure(
+        "KEY_UNAVAILABLE",
+        "AndroidKeyStore could not be reached for the installation key" +
+            (cause?.let { " (${it.javaClass.simpleName}: ${it.message})" } ?: "") +
+            "; the key was kept, never replaced. Try again; if this persists, reset() starts a new installation.",
+        cause,
+    )
 
     private fun requireSupportedAndroid() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
@@ -238,11 +282,19 @@ class InstallationKeyManager(private val context: Context) {
 
     private fun privateKeyEntry(keyStore: KeyStore): KeyStore.PrivateKeyEntry {
         try {
-            return keyStore.getEntry(keyAlias, null) as? KeyStore.PrivateKeyEntry
+            // getEntry answers null when its own lookup fails (the keystore
+            // just reported the key), and an UnsupportedOperationException
+            // when the alias holds no key entry -- on Android 7 to 11 also when
+            // that lookup fails: both may pass, so the key is kept.
+            val entry = keyStore.getEntry(keyAlias, null)
+                ?: throw keyUnavailable(null)
+            return entry as? KeyStore.PrivateKeyEntry
                 ?: throw InstallationKeyFailure(
                     "KEY_NOT_FOUND",
-                    "The Android installation key entry is missing or has the wrong type.",
+                    "The Android installation key entry has the wrong type.",
                 )
+        } catch (error: UnsupportedOperationException) {
+            throw keyUnavailable(error)
         } catch (error: GeneralSecurityException) {
             throw InstallationKeyFailure(
                 "KEY_LOOKUP_FAILED",

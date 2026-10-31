@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'necessary'
-  s.version          = '0.1.3'
+  s.version          = '0.1.4'
   s.summary          = 'Device integrity for Flutter apps: a device-bound key the plugin never exports, signed measurements, request proofs.'
   s.description      = <<-DESC
 The iOS half of the necessary plugin: the installation and step-up keys in the Secure

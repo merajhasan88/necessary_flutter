@@ -1,3 +1,20 @@
+## 0.1.4
+
+- Android: a key is made only where the keystore, answering, holds none. `containsAlias` also answers
+  "no such key" when the keystore cannot be reached — on Android 7 to 11 a binder failure, on 12 and
+  later any keystore error — and `start()` then generated a new installation key over the old one (and
+  a new step-up key over the one the backend holds), since generating replaces whatever the alias holds.
+  Now a "no" counts only when the keystore answers: the plugin deletes an alias that never holds a key —
+  a keystore that answers says "not found", one that cannot be reached fails — and asks again. When it
+  cannot be reached, `start()` fails with the new `KEY_UNAVAILABLE`, making no key and sending nothing,
+  and the step-up key answers `STEPUP_KEY_UNAVAILABLE`; a lookup that failed once and then answers finds
+  the same key. Signing tells the two apart the same way: `KEY_NOT_FOUND` and `STEPUP_KEY_NOT_FOUND`
+  only when the keystore says so.
+- Android: deleting a key — `reset()`, a step-up re-enrolment — no longer skips a key a failed lookup
+  did not report; it deletes, and fails with `KEY_DELETE_FAILED` when the key stays.
+- Android: making and deleting a key run one at a time in the process, whichever Flutter engine asks;
+  two first starts at once could each find no key, and the second generate over the first's.
+
 ## 0.1.3
 
 - iOS (collector 7): an app image whose code the App Store encrypted on disk is no longer compared with
