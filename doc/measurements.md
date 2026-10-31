@@ -263,6 +263,10 @@ the C library and the Android runtime (`libc.so`, `libart.so`); `ext` — other 
 hooks aim at (`libc++.so`, `libssl.so`, `libcrypto.so`, `libandroid_runtime.so`, `libbinder.so`); `app`
 — the app's own native code: what is mapped from its APK, and beside the APK the libraries the SDK
 names (the Flutter SDK: the Flutter engine, `libflutter.so`, and the compiled Dart, `libapp.so`).
+That is a selection, and it depends on how the app is packaged: a build that keeps its native
+libraries in the APK (the default) has all of them measured; one that extracts them leaves those under
+other names — another plugin's, say — outside `app`. Code compiled as the app runs has no file to be
+compared with.
 In each region expected = compared + skipped + unreadable, and `<region>_complete` is true exactly when
 some code was expected and all of it was compared. Any differing byte is code changed while the app
 runs, which should never happen. Memory that Android 10 and later maps execute-only is made readable for
@@ -294,7 +298,7 @@ names no target; every region is then incomplete.
 | `app_unreadable_bytes` | integer, bytes |  | `app` bytes that could not be read |
 | `core_complete` | true/false |  | every `core` byte expected was compared |
 | `ext_complete` | true/false |  | every `ext` byte expected was compared |
-| `app_complete` | true/false |  | every `app` byte expected was compared |
+| `app_complete` | true/false |  | every `app` byte expected was compared: complete over the selected mappings of the snapshot, not over all of the app's code |
 | `core_diff_bytes` | integer, bytes |  | `core` bytes that differ |
 | `ext_libs_diff` | integer, count |  | `ext` libraries with a difference |
 | `app_libs_diff` | integer, count |  | `app` files with a difference |
