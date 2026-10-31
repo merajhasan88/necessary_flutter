@@ -1,3 +1,10 @@
+## Unreleased
+
+- `doc/integration_guide.md`, section 7.2: how a runtime that compiles code as the app runs (.NET's on
+  Android) shows itself in `exec_mappings` — it maps more as more of the app is used, in blocks of one
+  size — so a release is recorded over whole sessions, not at a cold start, and a size is read against
+  the runtime's block.
+
 ## 0.1.5
 
 - Android: every failure says what failed beneath it. A native call's `NativeKeyException` message ends

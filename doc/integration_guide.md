@@ -629,9 +629,15 @@ normal looks like.
 3. **The memory around it** (`exec_mappings`, on Android). Code loaded at run time needs executable
    memory: memory both writable and executable (`wx_bytes`, `wx_size_classes`, `wx_largest_bytes`) and
    executable regions with no file behind them (`anon_exec_unlabeled_bytes`). Some runtimes compile
-   code as they run and map some of each — in amounts and sizes your own release runs show. Record the
-   most of each your release maps, per OS version, processor and page size; **more than your app ever
-   maps, or in sizes it never uses, is code in it that you did not ship.**
+   code as they run and map some of each — .NET's on Android compiles each method the first time it
+   runs. Such a runtime shows itself by how it grows: it maps more as more of the app is used, keeps it
+   while the app runs, and maps it in blocks of one size (64 KiB on the phones measured; your own runs
+   show yours). Record the most of each your release maps, per OS version, processor and page size,
+   **over whole sessions through your app's main features, not at a cold start** — or a genuine
+   customer who signs in and approves a request maps more than your record. **More than your app ever
+   maps, or a size that is not a whole number of its runtime's blocks, is code in it that you did not
+   ship.** That tells a runtime's own code from a tool's; it does not prove a hook absent — one can
+   allocate in the same blocks — so the code comparison above is the stronger evidence.
 
 Compare a phone with itself too: the same installation reporting other hashes without an update, or an
 older build than before, is an app that changed under it.
