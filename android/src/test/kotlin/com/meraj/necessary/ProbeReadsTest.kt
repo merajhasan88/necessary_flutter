@@ -127,9 +127,9 @@ class ProbeReadsTest {
     }
 
     @Test fun theAppsOwnNamesAreNoTools() {
-        val tokens = listOf("frida", "gadget")
-        val name = "com.example.blackfriday"
-        val install = "/data/app/~~Zfrida==/$name-Qgadget==/"
+        val tokens = listOf("tool", "gadget")
+        val name = "com.example.toolbox"
+        val install = "/data/app/~~Ztool==/$name-Qgadget==/"
         val own = listOf(install, "/data/user/0/$name/")
         fun line(path: String) = "7a0000-7b0000 r-xp 00000000 fd:00 123  $path"
         fun names(text: String) = ProbeReads.namesIn(text, own, name, tokens)
@@ -138,16 +138,16 @@ class ProbeReadsTest {
         assertEquals(emptyList<String>(), names("[anon:dalvik-classes.dex extracted in memory from ${install}base.apk]"))
         assertEquals(emptyList<String>(), names(line("/storage/emulated/0/Android/data/$name/files/plugin.so")))
         // What lies inside the app's folders, and anything elsewhere, is read.
-        assertEquals(tokens, names(line("${install}lib/arm64/libfrida-gadget.so")))
-        assertEquals(listOf("frida"), names(line("/data/local/tmp/FRIDA-agent.so")))
+        assertEquals(tokens, names(line("${install}lib/arm64/libtool-gadget.so")))
+        assertEquals(listOf("tool"), names(line("/data/local/tmp/TOOL-agent.so")))
     }
 
     @Test fun aThreadNamedForTheAppNamesNoTool() {
-        val tokens = listOf("frida")
-        val name = "com.example.blackfriday"
-        val main = ProbeReads.threads(listOf("ple.blackfriday"), 0, emptyList(), emptyList(), tokens, name)
+        val tokens = listOf("tool")
+        val name = "com.example.toolbox"
+        val main = ProbeReads.threads(listOf("example.toolbox"), 0, emptyList(), emptyList(), tokens, name)
         assertEquals(emptyList<String>(), main["token_threads"])
-        val tool = ProbeReads.threads(listOf("ple.blackfriday", "frida-worker"), 0, emptyList(), emptyList(), tokens, name)
+        val tool = ProbeReads.threads(listOf("example.toolbox", "tool-worker"), 0, emptyList(), emptyList(), tokens, name)
         assertEquals(tokens, tool["token_threads"])
     }
 

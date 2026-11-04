@@ -191,10 +191,8 @@ that cannot be read answers `error`.
 Instrumentation and hooking frameworks named in the app's own memory map, `/proc/self/maps`: Frida and
 its Gadget, Objection, Xposed, LSPosed, Substrate, Cydia, Zygisk, Riru, Magisk, KernelSU and APatch. It
 matches names, so a renamed library escapes it; `instrumentation_threads`, `exec_mappings` and
-`code_integrity` look at structure instead. The app's own folders and package name are not read as names
-— `com.example.blackfriday` holds "frida" — but the files inside those folders are, so a library of your
-own whose name holds one shows here in every report of that release. A map that cannot be read, or reads
-as empty, answers `error`.
+`code_integrity` look at structure instead. A map that cannot be read, or reads as empty, answers
+`error`.
 
 **When:** your backend asks for it.
 
@@ -228,7 +226,7 @@ ended while the list was read is simply gone.
 |---|---|---|---|
 | `frida_threads` | list | yes | the Frida runtime's thread names found: `gum-js-loop`, `gum-js`, `pool-frida` |
 | `glib_threads` | list | yes | the GLib thread names found — `gmain`, `gdbus`, `pool-spawner` — which Frida brings into an app and apps seldom bring themselves |
-| `token_threads` | list | yes | the names `runtime_maps` looks for, found in a thread's name; a thread named for the app itself, as the main thread is, is left out |
+| `token_threads` | list | yes | the names `runtime_maps` looks for, found in a thread's name |
 | `thread_count` | integer, count | yes | the threads whose names were read; a running app always has some, so 0 is a failed read |
 
 ### `exec_mappings`
@@ -573,10 +571,8 @@ was written is removed at once.
 Instrumentation and jailbreak names among the libraries loaded into the app: Frida and its Gadget,
 Objection, Cynject, Cycript, Substrate and MobileSubstrate, Substitute, libhooker, ElleKit, Cydia,
 Shadow, FLEX and libSparkAppList. It matches names, so a renamed library escapes it; `code_integrity`
-compares the code itself. The app's own bundle path and main executable are not read as names — a
-`BlackFriday.app` holds "frida" — but the libraries in the bundle are, so one of your own whose name
-holds one shows here in every report of that release. A library whose name the loader did not give (one
-unloading as the list is read) is in `unread` as `image_names`, since it could be one of those.
+compares the code itself. A library whose name the loader did not give (one unloading as the list is
+read) is in `unread` as `image_names`, since it could be one of those.
 
 **When:** your backend asks for it.
 

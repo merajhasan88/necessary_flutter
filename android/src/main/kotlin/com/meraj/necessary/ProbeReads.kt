@@ -105,9 +105,8 @@ object ProbeReads {
      * The listed names in one line of the memory map, in any case. The app's
      * own folders and package name are taken out of the line first: Android
      * names those folders after the package, with random text beside it, and
-     * neither names a tool - com.example.blackfriday holds "frida". What lies
-     * inside those folders is still read, so a library the app was rebuilt
-     * with is found by its own name.
+     * neither names a tool. What lies inside those folders is still read, so a
+     * library the app was rebuilt with is found by its own name.
      */
     fun namesIn(line: String, ownFolders: List<String>, packageName: String, tokens: List<String>): List<String> {
         var text = line

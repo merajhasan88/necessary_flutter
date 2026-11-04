@@ -4,9 +4,8 @@
   in `exec_mappings` — it maps more as more of the app is used, in blocks of one
   size — so a release is recorded over whole sessions, not at a cold start, and a size is read against
   the runtime's block.
-- `runtime_maps`, `instrumentation_threads` and iOS `dyld_images` no longer read the app's own name as a
-  tool's: an app whose package, folder or main executable holds a listed name — `com.example.blackfriday`
-  holds "frida" — reported it in every scan. What lies inside the app's folders is still read.
+- `runtime_maps`, `instrumentation_threads` and iOS `dyld_images` leave the app's own folders, package name
+  and main executable out of what they read as names.
 - Android: `root_shell` keeps the shell's error stream out of `su_path`, where a complaint that `which`
   is missing would have read as `su` found.
 - Android: a step-up signature that fails after the person approved, with any exception, answers the app;

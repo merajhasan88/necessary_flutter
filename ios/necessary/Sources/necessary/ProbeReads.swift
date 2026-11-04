@@ -167,9 +167,9 @@ enum ProbeReads {
 
     /// The listed names in one loaded image's path, in any case. The app's own
     /// bundle is read from the inside: its path and its main executable carry
-    /// the app's name, and neither names a tool - a BlackFriday.app holds
-    /// "frida". What the bundle holds beside them is still read, so a library
-    /// the app was rebuilt with is found by its own name.
+    /// the app's name, and neither names a tool. What the bundle holds beside
+    /// them is still read, so a library the app was rebuilt with is found by
+    /// its own name.
     static func imageTokens(
         path: String, bundlePath: String, mainExecutable: String?, tokens: [String]
     ) -> [String] {
