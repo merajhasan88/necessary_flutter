@@ -1,6 +1,6 @@
 # Necessary — what the app sends, and how your backend checks it
 
-The Necessary plugins (Android, iOS, Flutter, React Native, .NET) are open source. They give your app
+The Necessary plugins for Android and iOS apps are open source. They give your app
 a key they never export (section 1 says where the phone keeps it), measurements of the phone and of the
 app running on it, and — if
 you turn them on — a second key that the person must unlock, and a PIN your backend checks, to approve
@@ -629,8 +629,8 @@ normal looks like.
 3. **The memory around it** (`exec_mappings`, on Android). Code loaded at run time needs executable
    memory: memory both writable and executable (`wx_bytes`, `wx_size_classes`, `wx_largest_bytes`) and
    executable regions with no file behind them (`anon_exec_unlabeled_bytes`). Some runtimes compile
-   code as they run and map some of each — .NET's on Android compiles each method the first time it
-   runs. Such a runtime shows itself by how it grows: it maps more as more of the app is used, keeps it
+   code as they run and map some of each, compiling a method the first time it runs. Such a runtime
+   shows itself by how it grows: it maps more as more of the app is used, keeps it
    while the app runs, and maps it in blocks of one size (64 KiB on the phones measured; your own runs
    show yours). Record the most of each your release maps, per OS version, processor and page size,
    **over whole sessions through your app's main features, not at a cold start** — or a genuine
