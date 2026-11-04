@@ -117,8 +117,8 @@ so that you need not store it. The app answers with `installation_id`, `challeng
 | `optional_probes` | the personal measurements you ask for, answered only where the app enables them (section 8) |
 | `expires_at` | 60 seconds ahead |
 
-Ask for every measurement you rely on every time, and vary the others from scan to scan, so that a
-tampered app cannot prepare its answers. **Rely on every measurement that would catch tampering** — the
+Ask for every measurement you need every time, and vary the others from scan to scan, so that a
+tampered app cannot prepare its answers. **Use every measurement that would catch tampering** — the
 hooks, gadgets and changes to the app's code in memory among them: on Android `runtime_maps`,
 `frida_ports`, `instrumentation_threads`, `exec_mappings` and `code_integrity`; on iOS `dyld_images`,
 `environment` and `code_integrity`. One left to chance is one a tampered app waits out, scanning again
