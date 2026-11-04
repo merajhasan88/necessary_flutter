@@ -1,3 +1,7 @@
+## 0.1.7
+
+- The wording of the documents and the changelog. Nothing the plugin does changed.
+
 ## 0.1.6
 
 - `doc/integration_guide.md`, section 7.2: how a runtime that compiles code as the app runs shows itself
@@ -6,20 +10,16 @@
   the runtime's block.
 - `runtime_maps`, `instrumentation_threads` and iOS `dyld_images` leave the app's own folders, package name
   and main executable out of what they read as names.
-- Android: `root_shell` keeps the shell's error stream out of `su_path`, where a complaint that `which`
-  is missing would have read as `su` found.
-- Android: a step-up signature that fails after the person approved, with any exception, answers the app;
-  a keystore's `ProviderException` there used to end the app. A location permission request is answered
-  when its activity goes for good, where it used to wait for ever.
+- Android: `root_shell` keeps the shell's error stream out of `su_path`.
+- Android: a step-up signature that fails after the person approved answers the app, whatever failed. A
+  location permission request is answered when its activity goes for good.
 - A step-up key the phone lost and a re-enrolment made again leaves approvals waiting until the backend
   takes it, like a key replaced.
-- A TLS failure is an `ApiException`, as every call that got no answer is, not a raw `HandshakeException`;
-  a backend's answer that lacks a field the plugin needs is one too (`invalid_backend_answer`), not a
-  cast error.
-- The Python sample backend answers a malformed request: it used to drop the connection. Its other
-  requests answer as before.
-- `doc/measurements.md`: `installer_package` is left out or null when no installer is named, as the
-  collectors send it; the report's format is the same for every SDK, as it says now.
+- A TLS failure is an `ApiException`, as every call that got no answer is; so is a backend's answer that
+  lacks a field the plugin needs (`invalid_backend_answer`).
+- The Python sample backend answers a malformed request with a refusal.
+- `doc/measurements.md`: `installer_package` is left out or null when no installer is named; every SDK
+  sends its report in the same format.
 
 ## 0.1.5
 
