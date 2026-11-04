@@ -881,20 +881,19 @@ final class IntegrityProbeManager {
         var suspiciousCount = 0
         var unnamed = 0
         let imageCount = _dyld_image_count()
+        let bundlePath = Bundle.main.bundlePath
+        let mainName = Bundle.main.executableURL?.lastPathComponent
 
         for index in 0..<imageCount {
             guard let raw = _dyld_get_image_name(index) else {
                 unnamed += 1
                 continue
             }
-            let name = String(cString: raw).lowercased()
-            var matched = false
-            for token in IntegrityProbeManager.suspiciousImageTokens
-            where name.contains(token) {
-                tokens.insert(token)
-                matched = true
-            }
-            if matched { suspiciousCount += 1 }
+            let named = ProbeReads.imageTokens(
+                path: String(cString: raw), bundlePath: bundlePath, mainExecutable: mainName,
+                tokens: IntegrityProbeManager.suspiciousImageTokens)
+            tokens.formUnion(named)
+            if !named.isEmpty { suspiciousCount += 1 }
         }
 
         var result: [String: Any] = [

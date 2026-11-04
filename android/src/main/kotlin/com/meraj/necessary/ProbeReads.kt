@@ -101,6 +101,21 @@ object ProbeReads {
         return ok("tracer_pid" to pid, "seccomp" to seccomp, "no_new_privs" to noNewPrivs)
     }
 
+    /**
+     * The listed names in one line of the memory map, in any case. The app's
+     * own folders and package name are taken out of the line first: Android
+     * names those folders after the package, with random text beside it, and
+     * neither names a tool - com.example.blackfriday holds "frida". What lies
+     * inside those folders is still read, so a library the app was rebuilt
+     * with is found by its own name.
+     */
+    fun namesIn(line: String, ownFolders: List<String>, packageName: String, tokens: List<String>): List<String> {
+        var text = line
+        for (folder in ownFolders) text = text.replace(folder, "/")
+        val lower = text.replace(packageName, "").lowercase(java.util.Locale.US)
+        return tokens.filter { lower.contains(it) }
+    }
+
     /** The two developer settings, each read on its own: a read that threw is unread, not "off". */
     fun developerSettings(adb: Result<Boolean>, developer: Result<Boolean>): Map<String, Any> {
         if (adb.isFailure && developer.isFailure) {
@@ -166,7 +181,9 @@ object ProbeReads {
     /**
      * This process's thread names. A thread that ended between listing and
      * reading is gone, not unread; one whose name could not be read is
-     * unread, since a renamed instrumentation thread could be that one.
+     * unread, since a renamed instrumentation thread could be that one. A
+     * thread named for the app itself - Android gives the main thread part of
+     * the package's name, 15 characters at most - names no tool.
      */
     fun threads(
         names: List<String>,
@@ -174,6 +191,7 @@ object ProbeReads {
         fridaThreads: List<String>,
         glibThreads: List<String>,
         tokens: List<String>,
+        packageName: String = "",
     ): Map<String, Any> {
         val named = names.filter { it.isNotEmpty() }
         if (named.isEmpty()) return error("no thread of this process could be enumerated")
@@ -184,7 +202,9 @@ object ProbeReads {
             val lower = name.lowercase(java.util.Locale.US)
             for (t in fridaThreads) if (lower == t || lower.startsWith(t)) fridaHits.add(t)
             for (t in glibThreads) if (lower == t) glibHits.add(t)
-            for (t in tokens) if (lower.contains(t)) tokenHits.add(t)
+            if (!packageName.contains(name)) {
+                for (t in tokens) if (lower.contains(t)) tokenHits.add(t)
+            }
         }
         val unread = if (unreadable > 0) {
             mapOf("thread_names" to "$unreadable of ${named.size + unreadable} could not be read")

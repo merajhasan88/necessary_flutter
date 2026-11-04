@@ -304,12 +304,16 @@ class StepUpKeyManager(private val context: Context) {
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                     val authorised = result.cryptoObject?.signature ?: signer
-                    try {
+                    // Any failure here is told, a keystore's ProviderException
+                    // among them: unanswered, this runs on the main thread, and
+                    // an exception would end the app with the approval waiting.
+                    val outcome: Result<String> = try {
                         authorised.update(payload)
-                        done(Result.success(base64Url(authorised.sign())))
-                    } catch (error: GeneralSecurityException) {
-                        done(Result.failure(signingFailed(error)))
+                        Result.success(base64Url(authorised.sign()))
+                    } catch (error: Exception) {
+                        Result.failure(signingFailed(error))
                     }
+                    done(outcome)
                 }
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
@@ -443,23 +447,24 @@ class StepUpKeyManager(private val context: Context) {
         payload: ByteArray,
         done: (Result<String>) -> Unit,
     ) {
-        try {
-            done(Result.success(signNow(entry, payload)))
+        // Runs on the main thread after the person answered: every failure is
+        // told, as in authenticateOperation.
+        val outcome: Result<String> = try {
+            Result.success(signNow(entry, payload))
         } catch (error: KeyPermanentlyInvalidatedException) {
-            done(Result.failure(discardDeadKey(error)))
+            Result.failure(discardDeadKey(error))
         } catch (error: UserNotAuthenticatedException) {
-            done(
-                Result.failure(
-                    InstallationKeyFailure(
-                        "STEPUP_AUTH_FAILED",
-                        "The keystore did not accept the authentication for the step-up key.",
-                        error,
-                    ),
+            Result.failure(
+                InstallationKeyFailure(
+                    "STEPUP_AUTH_FAILED",
+                    "The keystore did not accept the authentication for the step-up key.",
+                    error,
                 ),
             )
-        } catch (error: GeneralSecurityException) {
-            done(Result.failure(signingFailed(error)))
+        } catch (error: Exception) {
+            Result.failure(signingFailed(error))
         }
+        done(outcome)
     }
 
     /**

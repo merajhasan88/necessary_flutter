@@ -1,8 +1,8 @@
 # Measurements — what the SDKs measure on the phone
 
 Every measurement a Necessary SDK can put in a signed report, field by field: what it is, how the
-SDK measures it, and what a complete answer holds. Every SDK sends the same report, whatever framework
-your app is built with, and none sends a score or a verdict;
+SDK measures it, and what a complete answer holds. Every SDK sends its report in the same format, whatever
+framework your app is built with, and none sends a score or a verdict;
 what a measurement means for a request is your backend's decision. The integration guide
 (`integration_guide.md`, beside this file) is the protocol — how your backend asks for a scan and checks
 the report — and its section 7 is about deciding with these measurements.
@@ -93,7 +93,7 @@ APK that could not be hashed as `split_apks:<file name>`.
 | `split_apks` | list |  | the installed split APKs, apart from the base APK: each its file `name` and its `sha256`, sorted by name, at most 64; empty for an install without splits |
 | `version_name` | text |  | the app's version name |
 | `version_code` | integer |  | the app's version code |
-| `installer_package` | text, or null |  | the package that installed the app; null when none is named — installed with adb, or by an installer that names none |
+| `installer_package` | text, or null |  | the package that installed the app; left out or null when none is named — installed with adb, or by an installer that names none |
 | `source_dir` | text |  | the base APK's path on the phone |
 
 ### `debug_state`
@@ -191,8 +191,10 @@ that cannot be read answers `error`.
 Instrumentation and hooking frameworks named in the app's own memory map, `/proc/self/maps`: Frida and
 its Gadget, Objection, Xposed, LSPosed, Substrate, Cydia, Zygisk, Riru, Magisk, KernelSU and APatch. It
 matches names, so a renamed library escapes it; `instrumentation_threads`, `exec_mappings` and
-`code_integrity` look at structure instead. A map that cannot be read, or reads as empty, answers
-`error`.
+`code_integrity` look at structure instead. The app's own folders and package name are not read as names
+— `com.example.blackfriday` holds "frida" — but the files inside those folders are, so a library of your
+own whose name holds one shows here in every report of that release. A map that cannot be read, or reads
+as empty, answers `error`.
 
 **When:** your backend asks for it.
 
@@ -226,7 +228,7 @@ ended while the list was read is simply gone.
 |---|---|---|---|
 | `frida_threads` | list | yes | the Frida runtime's thread names found: `gum-js-loop`, `gum-js`, `pool-frida` |
 | `glib_threads` | list | yes | the GLib thread names found — `gmain`, `gdbus`, `pool-spawner` — which Frida brings into an app and apps seldom bring themselves |
-| `token_threads` | list | yes | the names `runtime_maps` looks for, found in a thread's name |
+| `token_threads` | list | yes | the names `runtime_maps` looks for, found in a thread's name; a thread named for the app itself, as the main thread is, is left out |
 | `thread_count` | integer, count | yes | the threads whose names were read; a running app always has some, so 0 is a failed read |
 
 ### `exec_mappings`
@@ -571,8 +573,10 @@ was written is removed at once.
 Instrumentation and jailbreak names among the libraries loaded into the app: Frida and its Gadget,
 Objection, Cynject, Cycript, Substrate and MobileSubstrate, Substitute, libhooker, ElleKit, Cydia,
 Shadow, FLEX and libSparkAppList. It matches names, so a renamed library escapes it; `code_integrity`
-compares the code itself. A library whose name the loader did not give (one unloading as the list is
-read) is in `unread` as `image_names`, since it could be one of those.
+compares the code itself. The app's own bundle path and main executable are not read as names — a
+`BlackFriday.app` holds "frida" — but the libraries in the bundle are, so one of your own whose name
+holds one shows here in every report of that release. A library whose name the loader did not give (one
+unloading as the list is read) is in `unread` as `image_names`, since it could be one of those.
 
 **When:** your backend asks for it.
 

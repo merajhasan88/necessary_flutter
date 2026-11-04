@@ -385,6 +385,35 @@ void main() {
       },
     );
 
+    test(
+      'a malformed request is answered, never a connection dropped',
+      () async {
+        Future<void> answered(String path, Map<String, dynamic> body) async {
+          final http.Response response = await http.post(
+            Uri.parse('$_backend$path'),
+            headers: <String, String>{'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          );
+          expect(response.statusCode, greaterThanOrEqualTo(400));
+          expect((jsonDecode(response.body) as Map)['error'], isA<Map>());
+        }
+
+        // A payload that is valid base64url, of JSON that is no object.
+        final String notAnObject = base64Url
+            .encode(utf8.encode('[]'))
+            .replaceAll('=', '');
+        await answered('/v1/installations/verify', <String, dynamic>{
+          'payload': notAnObject,
+        });
+        await answered('/v1/installations/challenge', <String, dynamic>{
+          'installation_id': <int>[],
+        });
+        await answered('/v1/installations/register', <String, dynamic>{
+          'installation_id': 5,
+        });
+      },
+    );
+
     test("a request carries its proof once", () async {
       final DeviceTrust trust = _trust();
       await trust.start();

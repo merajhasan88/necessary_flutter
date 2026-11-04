@@ -289,6 +289,45 @@ class _CancelledStepUpKey extends _DyingStepUpKey {
   }
 }
 
+/// A key the phone lost after it was registered: the next one is made new,
+/// and the person cancels its first prompt.
+class _LostStepUpKey extends _StepUpKey {
+  int asked = 0;
+  bool cancelled = false;
+
+  @override
+  Future<StepUpKeyMetadata> getOrCreateKey({
+    required String factor,
+    required String mode,
+    required int windowSeconds,
+  }) async {
+    asked += 1;
+    final StepUpKeyMetadata key = await super.getOrCreateKey(
+      factor: factor,
+      mode: mode,
+      windowSeconds: windowSeconds,
+    );
+    return StepUpKeyMetadata(
+      publicKey: key.publicKey,
+      factor: key.factor,
+      mode: key.mode,
+      windowSeconds: key.windowSeconds,
+      securityLevel: key.securityLevel,
+      hardwareBacked: key.hardwareBacked,
+      created: asked > 1,
+    );
+  }
+
+  @override
+  Future<String> sign(String payloadBase64Url, {required String reason}) async {
+    if (asked > 1 && !cancelled) {
+      cancelled = true;
+      throw NativeKeyException('STEPUP_CANCELLED', 'the person cancelled');
+    }
+    return super.sign(payloadBase64Url, reason: reason);
+  }
+}
+
 /// Refuses the first key it is asked for, then makes one.
 class _FlakyStepUpKey extends _StepUpKey {
   int attempts = 0;
@@ -429,6 +468,36 @@ void main() {
       });
       expect(backend.calls[2].body['signature'], 'signed');
       expect(trust.installationSession, 'installation-session');
+    },
+  );
+
+  test(
+    'an answer that lacks a field is an ApiException, never a cast error',
+    () async {
+      final Matcher refused = throwsA(
+        isA<ApiException>().having(
+          (ApiException e) => e.code,
+          'code',
+          'invalid_backend_answer',
+        ),
+      );
+      await expectLater(
+        _trust(
+          _Backend(<String, List<Object>>{
+            '/v1/installations/verify': <Object>[<String, dynamic>{}],
+          }),
+        ).start(),
+        refused,
+      );
+      final DeviceTrust trust = _trust(
+        _Backend(<String, List<Object>>{
+          '/v1/integrity/challenge': <Object>[
+            <String, dynamic>{'challenge_id': 'scan-challenge'},
+          ],
+        }),
+      );
+      await trust.start();
+      await expectLater(trust.scan(), refused);
     },
   );
 
@@ -620,6 +689,28 @@ void main() {
       (await _approve(restarted)).headers.keys,
       contains('X-Step-Up-Proof'),
     );
+  });
+
+  test('a key the phone lost, made again by a re-enrolment the person '
+      'cancelled, leaves approvals waiting too', () async {
+    final _Store store = _Store();
+    final DeviceTrust trust = _trust(
+      _Backend(),
+      store: store,
+      stepUpKey: _LostStepUpKey(),
+      stepUp: const StepUpOptions(),
+    );
+    await trust.start();
+    Future<Map<String, dynamic>> reenrol() => trust.reenrolStepUp(
+      session: 'account-session',
+      reauthentication: <String, dynamic>{'password': 'pw'},
+    );
+    await expectLater(reenrol(), throwsA(isA<NativeKeyException>()));
+    await expectLater(_approve(trust), _reenrolPending);
+    expect(store.reenrolPending, isTrue);
+    expect(await reenrol(), containsPair('stepup_key_registered', true));
+    expect(store.reenrolPending, isFalse);
+    expect((await _approve(trust)).headers.keys, contains('X-Step-Up-Proof'));
   });
 
   test('a re-enrolment whose prompt was cancelled, then whose answer was '

@@ -165,6 +165,23 @@ enum ProbeReads {
         missing > 0 ? ["image_names": "\(missing) of \(total) could not be read"] : [:]
     }
 
+    /// The listed names in one loaded image's path, in any case. The app's own
+    /// bundle is read from the inside: its path and its main executable carry
+    /// the app's name, and neither names a tool - a BlackFriday.app holds
+    /// "frida". What the bundle holds beside them is still read, so a library
+    /// the app was rebuilt with is found by its own name.
+    static func imageTokens(
+        path: String, bundlePath: String, mainExecutable: String?, tokens: [String]
+    ) -> [String] {
+        var name = path
+        if path.hasPrefix(bundlePath) {
+            name = String(path.dropFirst(bundlePath.count).drop(while: { $0 == "/" }))
+            if name == mainExecutable { return [] }
+        }
+        let lower = name.lowercased()
+        return tokens.filter { lower.contains($0) }
+    }
+
     /// How one app image's comparison ended.
     enum ImageOutcome: Equatable {
         /// Compared: its __text bytes and how many differ, and the same for

@@ -251,7 +251,7 @@
           "description": "the app's version code"
         },
         "installer_package": {
-          "description": "the package that installed the app; null when none is named"
+          "description": "the package that installed the app; left out or null when none is named"
         },
         "source_dir": {
           "description": "the base APK's path"

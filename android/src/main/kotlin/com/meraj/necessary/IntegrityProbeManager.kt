@@ -679,9 +679,11 @@ class IntegrityProbeManager(
     )
 
     // A lookup that could not start, or never finished, is not "no su": the
-    // probe fails, and the report says it measured nothing.
+    // probe fails, and the report says it measured nothing. What the shell
+    // says on its error stream is kept out: runCommand merges it, and a
+    // complaint that `which` is missing would read as a path to su.
     private fun probeRootShell(): Map<String, Any> = ProbeReads.rootShell(
-        runCommand(listOf("/system/bin/sh", "-c", "command -v su || which su || true"))
+        runCommand(listOf("/system/bin/sh", "-c", "command -v su 2>/dev/null || which su 2>/dev/null || true"))
     )
 
     private fun probeSystemProperties(): Map<String, Any> {
@@ -745,18 +747,13 @@ class IntegrityProbeManager(
         var mapsLines = 0
         val file = File("/proc/self/maps")
         if (!file.canRead()) return unavailable("/proc/self/maps is not readable")
+        val folders = ownFolders()
         run {
-            file.forEachLine { original ->
+            file.forEachLine { line ->
                 mapsLines++
-                val line = original.lowercase(Locale.US)
-                var lineMatched = false
-                for (token in suspiciousRuntimeTokens) {
-                    if (line.contains(token)) {
-                        found.add(token)
-                        lineMatched = true
-                    }
-                }
-                if (lineMatched) suspiciousLines++
+                val named = ProbeReads.namesIn(line, folders, context.packageName, suspiciousRuntimeTokens)
+                found.addAll(named)
+                if (named.isNotEmpty()) suspiciousLines++
             }
         }
         if (mapsLines == 0) return unavailable("/proc/self/maps returned no lines")
@@ -853,7 +850,9 @@ class IntegrityProbeManager(
             }
             names.add(name)
         }
-        return ProbeReads.threads(names, unreadable, fridaThreads, glibThreads, suspiciousRuntimeTokens)
+        return ProbeReads.threads(
+            names, unreadable, fridaThreads, glibThreads, suspiciousRuntimeTokens, context.packageName
+        )
     }
 
     /**
@@ -961,6 +960,17 @@ class IntegrityProbeManager(
         )
     }
 
+    /** The folders the app's own files live in: its install folder and its data folders. */
+    private fun ownFolders(): List<String> {
+        val info = context.applicationInfo
+        return listOfNotNull(
+            info.sourceDir?.let { File(it).parent }?.let { "$it/" },
+            info.dataDir?.let { "$it/" },
+            "/data/data/${context.packageName}/",
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) info.deviceProtectedDataDir?.let { "$it/" } else null,
+        ).distinct()
+    }
+
     /** The size of one /proc/self/maps range, "start-end" in hex; 0 if unreadable. */
     private fun mappingSize(range: String): Long {
         val dash = range.indexOf('-')
@@ -998,12 +1008,7 @@ class IntegrityProbeManager(
         val info = context.applicationInfo
         val apks = (listOf(info.sourceDir) + info.splitSourceDirs.orEmpty().toList())
             .filterNotNull().distinct().toTypedArray()
-        val dirs = listOfNotNull(
-            info.sourceDir?.let { File(it).parent }?.let { "$it/" },
-            info.dataDir?.let { "$it/" },
-            "/data/data/${context.packageName}/",
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) info.deviceProtectedDataDir?.let { "$it/" } else null,
-        ).distinct().toTypedArray()
+        val dirs = ownFolders().toTypedArray()
         val started = System.nanoTime()
         val json = try {
             nativeCodeIntegrity(apks, dirs)

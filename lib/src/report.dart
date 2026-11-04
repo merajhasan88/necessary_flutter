@@ -4,6 +4,7 @@ library;
 
 import 'dart:convert';
 
+import 'answers.dart';
 import 'collector.dart';
 import 'errors.dart';
 import 'installation_key.dart';
@@ -83,9 +84,9 @@ class ScanChallenge {
         ? list.map((Object? item) => item.toString()).toList(growable: false)
         : const <String>[];
     return ScanChallenge(
-      challengeId: value['challenge_id'] as String,
-      nonce: value['nonce'] as String,
-      platform: value['platform'] as String,
+      challengeId: answerText(value, 'challenge_id'),
+      nonce: answerText(value, 'nonce'),
+      platform: answerText(value, 'platform'),
       requiredProbes: names(value['required_probes']),
       optionalProbes: names(value['optional_probes']),
       answer: value,

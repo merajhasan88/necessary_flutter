@@ -410,7 +410,7 @@ class Backend:
     def key_challenge(self, body):
         installation_id = body.get("installation_id")
         with self.lock:
-            if installation_id not in self.installations:
+            if not isinstance(installation_id, str) or installation_id not in self.installations:
                 raise Refusal(404, "installation_not_found", "No such installation.")
         expires = self.now() + KEY_CHALLENGE_SECONDS
         claims = {"challenge_id": str(uuid.uuid4()), "installation_id": installation_id,
@@ -427,7 +427,7 @@ class Backend:
             payload = b64url_decode(body.get("payload"))
             claims = json.loads(payload.decode("utf-8"))
             mac = b64url_decode(claims.pop("mac"))
-        except (ValueError, KeyError, AttributeError, UnicodeDecodeError):
+        except (ValueError, KeyError, AttributeError, TypeError, UnicodeDecodeError):
             raise Refusal(401, "proof_not_accepted", "This is not a challenge of ours.")
         expected = hmac.new(self.challenge_key, canonical(claims), hashlib.sha256).digest()
         if (not hmac.compare_digest(mac, expected) or claims.get("challenge_id") != challenge_id
@@ -562,7 +562,8 @@ class Backend:
         with self.lock:
             # 3. Its challenge, held while it is checked: this installation's,
             #    for its platform.
-            challenge = self.scan_challenges.get(report.get("challenge_id"))
+            challenge_id = report.get("challenge_id")
+            challenge = self.scan_challenges.get(challenge_id) if isinstance(challenge_id, str) else None
             if (challenge is None or challenge["installation_id"] != session["installation_id"]
                     or report.get("platform") != challenge["platform"]):
                 raise Refusal(400, "report_not_accepted", "The report answers no challenge of ours.",
@@ -665,6 +666,9 @@ class Backend:
         if not verifies(step_up["jwk"], raw, request.headers.get("X-Step-Up-Signature")):
             raise Refusal(403, "step_up_not_accepted", "The approval does not verify.",
                           {"check": "signature"})
+        if not isinstance(proof, dict):
+            raise Refusal(403, "step_up_not_accepted", "The approval is for another request.",
+                          {"check": "proof"})
         expected = {
             "version": 2, "purpose": "stepup", "installation_id": session["installation_id"],
             "access_token_sha256": sha256_hex(request.bearer.encode("utf-8")),
@@ -982,7 +986,13 @@ def handler_for(backend):
                 self.answer(404, {"error": {"code": "no_such_path", "message": "No such path."}})
 
         def do_POST(self):
-            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = -1
+            if length < 0:
+                self.answer(400, {"error": {"code": "bad_request", "message": "No length to read."}})
+                return
             if length > 1 << 20:
                 self.answer(413, {"error": {"code": "too_large", "message": "Too large."}})
                 return
@@ -1020,6 +1030,11 @@ def handler_for(backend):
                 if details:
                     error["details"] = details
                 self.answer(refusal.status, {"error": error}, failed)
+            except Exception as failure:
+                # Whatever this sample did not foresee is answered, never a
+                # connection dropped; the log names its kind alone.
+                self.answer(500, {"error": {"code": "server_error", "message": "The sample failed."}},
+                            type(failure).__name__)
 
     return Handler
 

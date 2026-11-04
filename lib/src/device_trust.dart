@@ -6,6 +6,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 
+import 'answers.dart';
 import 'client.dart';
 import 'collector.dart';
 import 'errors.dart';
@@ -350,15 +351,15 @@ class DeviceTrust {
     try {
       final Map<String, dynamic> challenge = await client
           .createInstallationChallenge(identity.installationId);
-      final String payload = challenge['payload'] as String;
+      final String payload = answerText(challenge, 'payload');
       final Map<String, dynamic> verified = await client.verifyInstallation(
         installationId: identity.installationId,
-        challengeId: challenge['challenge_id'] as String,
+        challengeId: answerText(challenge, 'challenge_id'),
         payload: payload,
         signature: await identity.signPayload(payload),
       );
       _current(generation);
-      return _session = verified['device_token'] as String;
+      return _session = answerText(verified, 'device_token');
     } on ApiException catch (error) {
       if (retried) {
         rethrow;
@@ -696,17 +697,21 @@ class DeviceTrust {
     final InstallationIdentity identity = await loadIdentity();
     _current(generation);
     _stepUpKey.configuredMode = options.mode;
+    // From here the phone's key and the backend's differ until the backend
+    // takes the new one: approvals wait for that.
+    Future<void> holdApprovals() async {
+      await _mutate(generation, () => _store.setStepUpReenrolPending(true));
+      _current(generation);
+      _offeredStepUpKey = null;
+      stepUpUnavailable = _reenrolPending();
+    }
+
     Future<StepUpKeyMetadata> newKey({required bool replace}) async {
       if (replace) {
-        // From here the phone's key and the backend's differ until the
-        // backend takes the new one: approvals wait for that.
-        await _mutate(generation, () => _store.setStepUpReenrolPending(true));
-        _current(generation);
-        _offeredStepUpKey = null;
-        stepUpUnavailable = _reenrolPending();
+        await holdApprovals();
         await _mutate(generation, _stepUpKey.deleteKey);
       }
-      return _mutate(
+      final StepUpKeyMetadata key = await _mutate(
         generation,
         () => _stepUpKey.getOrCreateKey(
           factor: options.factor,
@@ -714,6 +719,11 @@ class DeviceTrust {
           windowSeconds: options.windowSeconds,
         ),
       );
+      // None to replace, the phone having lost it: this one is as new.
+      if (key.created && !replace) {
+        await holdApprovals();
+      }
+      return key;
     }
 
     // A re-enrolment is the explicit recovery: a key the keystore cannot

@@ -198,7 +198,7 @@ class InstallationKeyManager(private val context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             throw InstallationKeyFailure(
                 "UNSUPPORTED_ANDROID_VERSION",
-                "This prototype requires Android 6.0 (API 23) or newer.",
+                "The installation key requires Android 6.0 (API 23) or newer.",
             )
         }
     }

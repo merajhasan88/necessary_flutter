@@ -126,6 +126,31 @@ class ProbeReadsTest {
         assertNull(unread(all))
     }
 
+    @Test fun theAppsOwnNamesAreNoTools() {
+        val tokens = listOf("frida", "gadget")
+        val name = "com.example.blackfriday"
+        val install = "/data/app/~~Zfrida==/$name-Qgadget==/"
+        val own = listOf(install, "/data/user/0/$name/")
+        fun line(path: String) = "7a0000-7b0000 r-xp 00000000 fd:00 123  $path"
+        fun names(text: String) = ProbeReads.namesIn(text, own, name, tokens)
+        assertEquals(emptyList<String>(), names(line("${install}base.apk")))
+        assertEquals(emptyList<String>(), names(line("/data/user/0/$name/app_flutter/plugin.so")))
+        assertEquals(emptyList<String>(), names("[anon:dalvik-classes.dex extracted in memory from ${install}base.apk]"))
+        assertEquals(emptyList<String>(), names(line("/storage/emulated/0/Android/data/$name/files/plugin.so")))
+        // What lies inside the app's folders, and anything elsewhere, is read.
+        assertEquals(tokens, names(line("${install}lib/arm64/libfrida-gadget.so")))
+        assertEquals(listOf("frida"), names(line("/data/local/tmp/FRIDA-agent.so")))
+    }
+
+    @Test fun aThreadNamedForTheAppNamesNoTool() {
+        val tokens = listOf("frida")
+        val name = "com.example.blackfriday"
+        val main = ProbeReads.threads(listOf("ple.blackfriday"), 0, emptyList(), emptyList(), tokens, name)
+        assertEquals(emptyList<String>(), main["token_threads"])
+        val tool = ProbeReads.threads(listOf("ple.blackfriday", "frida-worker"), 0, emptyList(), emptyList(), tokens, name)
+        assertEquals(tokens, tool["token_threads"])
+    }
+
     @Test fun splitsAreListedApartSortedAndNeverDropped() {
         val hash = "ab".repeat(32)
         val (none, noneUnread) = ProbeReads.splitApks(emptyMap())

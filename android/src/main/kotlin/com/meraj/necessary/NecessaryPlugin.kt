@@ -90,12 +90,16 @@ class NecessaryPlugin :
         onAttachedToActivity(binding)
 
     // Gone for good: a step-up waiting for the confirm-credential result would
-    // never hear it, and would hold every later approval at STEPUP_BUSY.
+    // never hear it, and would hold every later approval at STEPUP_BUSY; an
+    // app waiting for the person's choice on the location permission would
+    // never be answered, so it hears what the app holds now.
     override fun onDetachedFromActivity() {
         detachFromActivity()
         if (::stepUpKeys.isInitialized) {
             stepUpKeys.cancelPendingConfirmation()
         }
+        pendingLocationResult?.success(locationState())
+        pendingLocationResult = null
     }
 
     private fun detachFromActivity() {

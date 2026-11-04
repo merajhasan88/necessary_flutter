@@ -4,6 +4,23 @@
   in `exec_mappings` — it maps more as more of the app is used, in blocks of one
   size — so a release is recorded over whole sessions, not at a cold start, and a size is read against
   the runtime's block.
+- `runtime_maps`, `instrumentation_threads` and iOS `dyld_images` no longer read the app's own name as a
+  tool's: an app whose package, folder or main executable holds a listed name — `com.example.blackfriday`
+  holds "frida" — reported it in every scan. What lies inside the app's folders is still read.
+- Android: `root_shell` keeps the shell's error stream out of `su_path`, where a complaint that `which`
+  is missing would have read as `su` found.
+- Android: a step-up signature that fails after the person approved, with any exception, answers the app;
+  a keystore's `ProviderException` there used to end the app. A location permission request is answered
+  when its activity goes for good, where it used to wait for ever.
+- A step-up key the phone lost and a re-enrolment made again leaves approvals waiting until the backend
+  takes it, like a key replaced.
+- A TLS failure is an `ApiException`, as every call that got no answer is, not a raw `HandshakeException`;
+  a backend's answer that lacks a field the plugin needs is one too (`invalid_backend_answer`), not a
+  cast error.
+- The Python sample backend answers a malformed request: it used to drop the connection. Its other
+  requests answer as before.
+- `doc/measurements.md`: `installer_package` is left out or null when no installer is named, as the
+  collectors send it; the report's format is the same for every SDK, as it says now.
 
 ## 0.1.5
 

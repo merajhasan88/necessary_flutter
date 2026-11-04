@@ -91,6 +91,10 @@ class HttpTransport implements DeviceTrustTransport {
       throw ApiException('Network connection failed: ${error.message}');
     } on http.ClientException catch (error) {
       throw ApiException('HTTP connection failed: ${error.message}');
+    } on IOException catch (error) {
+      // A TLS handshake or certificate refused, among others: no other
+      // client exception carries them, and the request got no answer.
+      throw ApiException('The connection failed: $error');
     }
 
     Map<String, dynamic> decoded = <String, dynamic>{};
