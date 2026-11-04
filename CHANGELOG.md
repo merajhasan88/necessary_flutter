@@ -1,4 +1,4 @@
-## Unreleased
+## 0.1.6
 
 - `doc/integration_guide.md`, section 7.2: how a runtime that compiles code as the app runs shows itself
   in `exec_mappings` — it maps more as more of the app is used, in blocks of one
