@@ -374,7 +374,7 @@ class Backend:
                 # Keyed before it is kept: what the app says, never proof.
                 "hint": (hmac.new(self.hint_key, hint["value"].encode("ascii"),
                                   hashlib.sha256).hexdigest() if hint else None),
-                # Recorded, never relied on: the phone cannot prove it.
+                # Recorded, never relied on: the device cannot prove it.
                 "key_security": body.get("key_security"),
                 "step_up": step_up,
             }
@@ -382,7 +382,7 @@ class Backend:
         return {"installation_id": installation_id, "stepup_key_registered": step_up is not None}
 
     def _step_up_key(self, body, installation_thumbprint):
-        """Section 3, step-up: the key and how the phone says it is unlocked."""
+        """Section 3, step-up: the key and how the device says it is unlocked."""
         jwk = body.get("stepup_public_key")
         if jwk is None:
             return None
@@ -581,11 +581,11 @@ class Backend:
             if not hmac.compare_digest(sha256_hex(nonce), challenge["nonce_sha256"]):
                 raise Refusal(400, "report_not_accepted", "The report carries another nonce.",
                               {"check": "challenge_nonce"})
-            # 6. The phone's clock.
+            # 6. The device's clock.
             collected = report.get("collected_at")
             if (isinstance(collected, bool) or not isinstance(collected, int)
                     or abs(self.now() - collected) > REPORT_CLOCK_SECONDS):
-                raise Refusal(400, "integrity_report_stale", "The phone's clock is far off.")
+                raise Refusal(400, "integrity_report_stale", "The device's clock is far off.")
             # 7. A collector this backend reads.
             version = report.get("collector_version")
             if (isinstance(version, bool) or not isinstance(version, int)
@@ -720,7 +720,7 @@ class Backend:
         self._reauthenticate(self.accounts[session["account"]], session["account"],
                              body.get("password"))
         with self.lock:
-            # Another account on the phone, which needs only the installation
+            # Another account on the device, which needs only the installation
             # key, gains no step-up from it.
             installation["step_up"] = dict(step_up, account=session["account"])
         return {"stepup_key_registered": True}
@@ -1020,7 +1020,7 @@ def handler_for(backend):
                     raise Refusal(404, "no_such_path", "No such path.")
                 self.answer(200, route(backend, request, body))
             except Refusal as refusal:
-                # Which check failed goes to the log, never to the phone, which
+                # Which check failed goes to the log, never to the device, which
                 # is told what to do next (section 7): what gave a request away
                 # is what an attacker would fix.
                 details = dict(refusal.details or {})

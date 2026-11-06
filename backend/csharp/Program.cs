@@ -543,14 +543,14 @@ public sealed class Backend(JsonSchema schema, JsonObject definitions, string? t
             _installations[installationId] = new Installation(key, (JsonObject)jwk.DeepClone(), platform,
                 // Keyed before it is kept: what the app says, never proof.
                 hint is null ? null : Convert.ToHexStringLower(Wire.Hmac(_hintKey, Encoding.ASCII.GetBytes(Wire.Text(hint["value"])!))),
-                // Recorded, never relied on: the phone cannot prove it.
+                // Recorded, never relied on: the device cannot prove it.
                 body["key_security"]?.DeepClone(), stepUp);
             _byThumbprint[key] = installationId;
         }
         return new JsonObject { ["installation_id"] = installationId, ["stepup_key_registered"] = stepUp is not null };
     }
 
-    /// <summary>Section 3, step-up: the key and how the phone says it is unlocked.</summary>
+    /// <summary>Section 3, step-up: the key and how the device says it is unlocked.</summary>
     private static StepUpKey? StepUpKeyOf(JsonObject body, string installationThumbprint)
     {
         if (body["stepup_public_key"] is not { } node)
@@ -858,11 +858,11 @@ public sealed class Backend(JsonSchema schema, JsonObject definitions, string? t
                 throw new Refusal(400, "report_not_accepted", "The report carries another nonce.",
                     new JsonObject { ["check"] = "challenge_nonce" });
             }
-            // 6. The phone's clock.
+            // 6. The device's clock.
             var collected = Wire.Integer(report["collected_at"]);
             if (collected is null || Math.Abs(Wire.Now() - collected.Value) > ReportClockSeconds)
             {
-                throw new Refusal(400, "integrity_report_stale", "The phone's clock is far off.");
+                throw new Refusal(400, "integrity_report_stale", "The device's clock is far off.");
             }
             // 7. A collector this backend reads.
             var version = Wire.Integer(report["collector_version"]);
@@ -1054,7 +1054,7 @@ public sealed class Backend(JsonSchema schema, JsonObject definitions, string? t
         await Reauthenticate(AccountOf(session), session.Account!, Wire.Text(body["password"]));
         lock (_lock)
         {
-            // Another account on the phone, which needs only the installation key, gains no step-up from it.
+            // Another account on the device, which needs only the installation key, gains no step-up from it.
             _installations[session.InstallationId] = installation with { StepUp = stepUp with { Account = session.Account } };
         }
         return new JsonObject { ["stepup_key_registered"] = true };
@@ -1528,7 +1528,7 @@ public static class Program
         {
             status = refusal.Status;
             var error = new JsonObject { ["code"] = refusal.Code, ["message"] = refusal.Message };
-            // Which check failed goes to the log, never to the phone, which is told what to do next
+            // Which check failed goes to the log, never to the device, which is told what to do next
             // (section 7): what gave a request away is what an attacker would fix.
             var details = refusal.Details?.DeepClone() as JsonObject ?? new JsonObject();
             failed = string.Join(" ", new[] { "check", "at" }

@@ -421,7 +421,7 @@ class Backend {
       thumbprint: key, jwk, platform,
       // Keyed before it is kept: what the app says, never proof.
       hint: hint ? hmac(this.hintKey, hint.value as string).toString("hex") : null,
-      // Recorded, never relied on: the phone cannot prove it.
+      // Recorded, never relied on: the device cannot prove it.
       keySecurity: body.key_security ?? null,
       stepUp,
     });
@@ -429,7 +429,7 @@ class Backend {
     return { installation_id: installationId, stepup_key_registered: stepUp !== null };
   }
 
-  /** Section 3, step-up: the key and how the phone says it is unlocked. */
+  /** Section 3, step-up: the key and how the device says it is unlocked. */
   private stepUpKey(body: JsonObject, installationThumbprint: string): Installation["stepUp"] {
     const jwk = body.stepup_public_key;
     if (jwk === undefined || jwk === null) return null;
@@ -621,10 +621,10 @@ class Backend {
       throw new Refusal(400, "report_not_accepted", "The report carries another nonce.",
         { check: "challenge_nonce" });
     }
-    // 6. The phone's clock.
+    // 6. The device's clock.
     const collected = report.collected_at;
     if (!isInt(collected) || Math.abs(now() - collected) > REPORT_CLOCK_SECONDS) {
-      throw new Refusal(400, "integrity_report_stale", "The phone's clock is far off.");
+      throw new Refusal(400, "integrity_report_stale", "The device's clock is far off.");
     }
     // 7. A collector this backend reads.
     const version = report.collector_version;
@@ -755,7 +755,7 @@ class Backend {
     }
     const account = this.accounts.get(session.account as string) as Account;
     await this.reauthenticate(account, session.account as string, body.password);
-    // Another account on the phone, which needs only the installation key, gains no step-up from it.
+    // Another account on the device, which needs only the installation key, gains no step-up from it.
     installation.stepUp = { ...stepUp, account: session.account as string };
     return { stepup_key_registered: true };
   }
@@ -1040,7 +1040,7 @@ async function handle(backend: Backend, request: Request): Promise<[number, unkn
     return [200, await route(backend, request, body)];
   } catch (error) {
     if (!(error instanceof Refusal)) throw error;
-    // Which check failed goes to the log, never to the phone, which is told what to do next
+    // Which check failed goes to the log, never to the device, which is told what to do next
     // (section 7): what gave a request away is what an attacker would fix.
     const { check, at, ...details } = error.details ?? {};
     const failed = Object.entries({ check, at }).filter(([, value]) => value !== undefined)
