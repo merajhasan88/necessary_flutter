@@ -263,8 +263,8 @@ the C library and the Android runtime (`libc.so`, `libart.so`); `ext` — other 
 hooks aim at (`libc++.so`, `libssl.so`, `libcrypto.so`, `libandroid_runtime.so`, `libbinder.so`); `app`
 — the app's own native code: what is mapped from the APKs the app was installed from (its base APK and
 its split APKs, by their exact paths — never another package's APK the app has loaded code from, such
-as the WebView's), and the libraries the SDK names wherever they are (the Flutter SDK: the Flutter
-engine, `libflutter.so`, and the compiled Dart, `libapp.so`). That is a selection, and it depends on
+as the WebView's), and the libraries the SDK names wherever they are (the Necessary SDK for Flutter: the
+Flutter engine, `libflutter.so`, and the compiled Dart, `libapp.so`). That is a selection, and it depends on
 how the app is packaged: a build that keeps its native libraries in its APKs (the default) has all of
 them measured; one that extracts them leaves those under other names — another plugin's, say — outside
 `app`. The report says what it leaves out: every executable file of the app's own that is mapped but
