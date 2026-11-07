@@ -74,9 +74,10 @@ guide, section 7).
 ## Run
 
 ```sh
-# Python 3.10 or later
-pip install --require-hashes -r python/requirements.txt
-python3 python/server.py --port 8787 --schema <contract>/report.schema.json
+# Python 3.11 or later, its packages in a virtual environment of its own
+python3 -m venv .venv
+.venv/bin/python -m pip install --require-hashes -r python/requirements.txt
+.venv/bin/python python/server.py --port 8787 --schema <contract>/report.schema.json
 
 # TypeScript, on Node 22 or later
 cd typescript && npm ci && npm run build

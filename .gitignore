@@ -37,3 +37,6 @@ backend/typescript/node_modules/
 backend/typescript/dist/
 backend/csharp/bin/
 backend/csharp/obj/
+
+# The sample backend's Python packages (README, "Try the example app")
+.venv/

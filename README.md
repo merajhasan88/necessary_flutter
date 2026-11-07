@@ -303,11 +303,13 @@ The sample backends live in the repository, not in the package, so start from a 
    cd necessary_flutter
    ```
 
-2. Start a sample backend on your computer. It answers on `127.0.0.1` only. In Python 3.10 or later:
+2. Start a sample backend on your computer. It answers on `127.0.0.1` only. In Python 3.11 or later, with
+   its packages in a virtual environment of its own:
 
    ```sh
-   pip install --require-hashes -r backend/python/requirements.txt
-   python3 backend/python/server.py --port 8787 --schema contract/report-1/android-8-ios-5/report.schema.json
+   python3 -m venv .venv
+   .venv/bin/python -m pip install --require-hashes -r backend/python/requirements.txt
+   .venv/bin/python backend/python/server.py --port 8787 --schema contract/report-1/android-8-ios-5/report.schema.json
    ```
 
    The TypeScript and C# samples run the same way; their commands are in
