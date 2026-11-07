@@ -1,3 +1,9 @@
+## 0.1.8
+
+- The example's steps start the Python sample backend in Python 3.11 or later, with its packages in a
+  virtual environment of its own (`.venv`), as the sample backends' README does.
+- The Python sample backend stops quietly on Ctrl+C.
+
 ## 0.1.7
 
 - The wording of the documents and the changelog. Nothing the plugin does changed.
