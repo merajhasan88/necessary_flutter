@@ -1055,7 +1055,12 @@ def main():
         backend = Backend(json.load(handle), token)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), handler_for(backend))
     print("listening on http://127.0.0.1:%d" % args.port, flush=True)
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass  # Ctrl+C: stop quietly, as the TypeScript and C# samples do
+    finally:
+        server.server_close()
 
 
 if __name__ == "__main__":
