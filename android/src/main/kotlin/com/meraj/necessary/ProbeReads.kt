@@ -325,6 +325,127 @@ object ProbeReads {
     }
 
     /**
+     * The runtime's debugger thread among this process's thread names
+     * (collector 11): JDWP, through which a debugger attaches to the app's
+     * code. Android starts it only in an app built debuggable, or on a system
+     * that is (ro.debuggable 1): "JDWP" before Android 9, "ADB-JDWP Connection
+     * Control Thread" since (15 characters of it), and "JDWP ..." threads while
+     * a debugger is attached. With a thread name unread, a "no" could be
+     * wrong, so it is unread instead.
+     */
+    fun jdwpThread(names: List<String>, unreadable: Int): Map<String, Any> {
+        val named = names.filter { it.isNotEmpty() }
+        return when {
+            named.any { isJdwpThread(it) } -> mapOf("jdwp_thread" to true)
+            named.isEmpty() -> mapOf("unread" to mapOf("jdwp_thread" to "no thread of this process could be listed"))
+            unreadable > 0 -> mapOf(
+                "unread" to mapOf("jdwp_thread" to "$unreadable of ${named.size + unreadable} thread names could not be read")
+            )
+            else -> mapOf("jdwp_thread" to false)
+        }
+    }
+
+    fun isJdwpThread(name: String): Boolean = name.startsWith("JDWP") || name.startsWith("ADB-JDWP")
+
+    /** Where a file lies, and in whose private folder when it is in one. */
+    data class Place(val kind: String, val owner: String? = null)
+
+    private val installedApps = listOf(Regex("^/data/app/"), Regex("^/mnt/expand/[^/]+/app/"))
+    private val systemPartitions = listOf("/system/", "/system_ext/", "/product/", "/vendor/", "/odm/", "/oem/", "/apex/")
+    private val appData = listOf(
+        Regex("^/data/data/([^/]+)/"),
+        Regex("^/data/user(?:_de)?/\\d+/([^/]+)/"),
+        Regex("^/mnt/expand/[^/]+/user(?:_de)?/\\d+/([^/]+)/"),
+    )
+
+    /**
+     * installed: where the package manager puts installed apps; system: a
+     * system partition; app_data: an app's private folder, owner naming the
+     * app; elsewhere: anywhere else.
+     */
+    fun place(path: String): Place {
+        if (installedApps.any { it.containsMatchIn(path) }) return Place("installed")
+        if (systemPartitions.any { path.startsWith(it) }) return Place("system")
+        for (pattern in appData) pattern.find(path)?.let { return Place("app_data", it.groupValues[1]) }
+        return Place("elsewhere")
+    }
+
+    // What a process maps to run code: fonts, databases and other data files are not counted.
+    private val codeFiles = listOf(".apk", ".dex", ".odex", ".vdex", ".oat", ".art", ".so", ".jar")
+    // Apps load Google Play services' code by design (its dynamite modules), from its own folder.
+    private const val PLAY_SERVICES = "com.google.android.gms"
+
+    /**
+     * Whether Android runs the app itself, or another app runs it inside its
+     * own (collector 11). An app that does keeps this one's package file and
+     * data in its own private folder, and its code in this process: every
+     * reading is where Android itself says the files are, or what the kernel
+     * maps, and the app's own code is unchanged, so no other measurement
+     * shows it. A part not read is unread, never a clean answer.
+     */
+    fun appHost(
+        packageName: String,
+        sourceDir: String?,
+        dataDir: String?,
+        processUid: Int,
+        appUid: Int,
+        packagesForUid: Result<List<String>?>,
+        mapsLines: Result<List<String>>,
+        maxApps: Int,
+    ): Map<String, Any> {
+        val result = ok()
+        val unread = linkedMapOf<String, String>()
+        if (sourceDir.isNullOrEmpty()) {
+            unread["loaded_from"] = "the app's package file is not named"
+        } else {
+            val where = place(sourceDir)
+            result["loaded_from"] = when {
+                where.kind == "app_data" && where.owner != packageName -> "another_app"
+                where.kind == "installed" || where.kind == "system" -> where.kind
+                else -> "elsewhere"
+            }
+        }
+        if (dataDir.isNullOrEmpty()) {
+            unread["data_folder"] = "the app's data folder is not named"
+        } else {
+            val where = place(dataDir.trimEnd('/') + "/")
+            result["data_folder"] = when {
+                where.kind != "app_data" -> "elsewhere"
+                where.owner == packageName -> "own"
+                else -> "another_app"
+            }
+        }
+        val failed = packagesForUid.exceptionOrNull()
+        if (failed != null) {
+            unread["uid_matches"] = why(failed)
+        } else {
+            val packages = packagesForUid.getOrNull()
+            result["uid_matches"] = processUid == appUid && packages != null && packageName in packages
+        }
+        val lines = mapsLines.getOrNull()
+        if (lines.isNullOrEmpty()) {
+            unread["other_app_code"] = mapsLines.exceptionOrNull()?.let { why(it) } ?: "/proc/self/maps returned no lines"
+        } else {
+            val owners = sortedSetOf<String>()
+            for (line in lines) {
+                val fields = line.trim().split(Regex("\\s+"), limit = 6)
+                if (fields.size < 6) continue
+                val path = fields[5].removeSuffix(" (deleted)")
+                if ('x' !in fields[1] && codeFiles.none { path.endsWith(it) }) continue
+                val where = place(path)
+                val owner = where.owner
+                if (where.kind == "app_data" && owner != null && owner != packageName && owner != PLAY_SERVICES) {
+                    owners.add(owner)
+                }
+            }
+            result["other_app_code"] = owners.take(maxApps).map { it.take(128) }
+            result["truncated"] = owners.size > maxApps
+        }
+        if (unread.size == 4) return error("nothing of where the app runs could be read: " + unread.values.first())
+        return withUnread(result, unread)
+    }
+
+    /**
      * Why a read failed, for `unread` and a probe's `error`: the failure and
      * every cause beneath it (Causes), within the contract's 160 characters.
      */

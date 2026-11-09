@@ -300,10 +300,14 @@
         },
         "waiting_for_debugger": {
           "type": "boolean"
+        },
+        "jdwp_thread": {
+          "type": "boolean",
+          "description": "the runtime's debugger thread (JDWP) runs in the app's process"
         }
       },
       "additionalProperties": true,
-      "description": "a Java debugger attached or awaited",
+      "description": "a Java debugger attached or awaited, and the runtime's debugger thread",
       "x-answered": "when the backend requests it",
       "x-complete-when-ok": [
         "debugger_connected",
@@ -1240,6 +1244,78 @@
         "vpn_active"
       ]
     },
+    "android.app_host": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "error",
+            "unsupported",
+            "not_enabled"
+          ]
+        },
+        "error": {
+          "type": "string",
+          "description": "why the probe could not measure"
+        },
+        "error_type": {
+          "description": "the failure's kind (Android)"
+        },
+        "reason": {
+          "description": "why the probe is unsupported here"
+        },
+        "unread": {
+          "$ref": "#/$defs/unread"
+        },
+        "loaded_from": {
+          "enum": [
+            "installed",
+            "system",
+            "another_app",
+            "elsewhere"
+          ],
+          "description": "where the app's own package file is: where Android installs apps, a system partition, inside another app's private folder, or elsewhere"
+        },
+        "data_folder": {
+          "enum": [
+            "own",
+            "another_app",
+            "elsewhere"
+          ],
+          "description": "where the app's private files are: its own folder, inside another app's, or elsewhere"
+        },
+        "uid_matches": {
+          "type": "boolean"
+        },
+        "other_app_code": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)*$"
+          },
+          "description": "the apps whose code files are mapped into this process from their private folders, Google Play services left out, sorted, at most 32"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true,
+      "description": "whether Android runs the app itself, or another app runs it inside its own",
+      "x-answered": "volunteered on every scan",
+      "x-parts": [
+        "loaded_from",
+        "data_folder",
+        "uid_matches",
+        "other_app_code"
+      ]
+    },
     "android.local_addresses": {
       "type": "object",
       "required": [
@@ -1448,10 +1524,13 @@
         },
         "truncated": {
           "type": "boolean"
+        },
+        "call_app": {
+          "$ref": "#/$defs/app_entry"
         }
       },
       "additionalProperties": true,
-      "description": "device-administrator apps, and known remote-control apps installed",
+      "description": "device-administrator apps, known remote-control apps installed, and the app that handles calls",
       "x-answered": "personal: only when the backend requests it and the app enabled it",
       "x-parts": [
         "device_admins",
@@ -1702,6 +1781,9 @@
         },
         "network": {
           "$ref": "#/$defs/android.network"
+        },
+        "app_host": {
+          "$ref": "#/$defs/android.app_host"
         },
         "local_addresses": {
           "$ref": "#/$defs/android.local_addresses"
@@ -2495,7 +2577,7 @@
         }
       },
       "additionalProperties": true,
-      "description": "device-administrator apps, and known remote-control apps installed; iOS shows an app no other app, so it answers unsupported",
+      "description": "device-administrator apps, known remote-control apps installed, and the app that handles calls; iOS shows an app no other app, so it answers unsupported",
       "x-answered": "personal: only when the backend requests it and the app enabled it"
     },
     "ios.screen_capture": {

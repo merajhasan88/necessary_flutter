@@ -91,7 +91,7 @@ const List<MeasurementInfo> androidMeasurements = <MeasurementInfo>[
   MeasurementInfo(
     'debug_state',
     'Debugger',
-    'A Java debugger attached or awaited.',
+    "A Java debugger attached or awaited, and the runtime's debugger thread.",
     MeasurementGroup.hooks,
   ),
   MeasurementInfo(
@@ -155,6 +155,13 @@ const List<MeasurementInfo> androidMeasurements = <MeasurementInfo>[
     'Network',
     'A VPN up on any network; an HTTP proxy set.',
     MeasurementGroup.device,
+  ),
+  MeasurementInfo(
+    'app_host',
+    'App host',
+    'Whether Android runs the app itself, or another app runs it inside its '
+        'own.',
+    MeasurementGroup.app,
   ),
 ];
 
@@ -254,8 +261,8 @@ const List<MeasurementInfo> personalCatalog = <MeasurementInfo>[
   MeasurementInfo(
     'other_access',
     'Other access',
-    'Device-administrator apps, and known remote-control apps installed. '
-        'Android only.',
+    'Device-administrator apps, known remote-control apps installed, and '
+        'the app that handles calls. Android only.',
     MeasurementGroup.personal,
   ),
   MeasurementInfo(

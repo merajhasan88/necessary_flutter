@@ -57,8 +57,8 @@ false*, present and false; empty, sent when the SDK has it.
 
 ## Apps in a list
 
-An app in `services`, `keyboard`, `listeners`, `device_admins` or `remote_access_apps` (Android) is an
-object: `package`, its package name; `service`, the component the list is about, where there is one;
+An app in `services`, `keyboard`, `listeners`, `device_admins`, `remote_access_apps` or `call_app`
+(Android) is an object: `package`, its package name; `service`, the component the list is about, where there is one;
 `system`, true for an app that is part of the phone's system; and `installer`, the package that installed
 it, empty for none. `system` and `installer` are left out where Android hides the app from this one —
 unknown, never evidence. A list holds at most 32 apps, and `truncated` is true when the phone had more.
@@ -67,8 +67,8 @@ unknown, never evidence. A list holds at most 32 apps, and `truncated` is true w
 
 Your backend may ask for `app_identity`, `debug_state`, `tracer`, `root_files`, `root_shell`,
 `system_properties`, `selinux`, `mounts`, `runtime_maps`, `frida_ports`, `instrumentation_threads`,
-`exec_mappings`, `code_integrity`, `developer_settings` and `emulator`. Every scan carries `device` and
-`network`. The personal measurements are `local_addresses`, `accessibility`, `notification_access`,
+`exec_mappings`, `code_integrity`, `developer_settings` and `emulator`. Every scan carries `device`,
+`network` and `app_host`. The personal measurements are `local_addresses`, `accessibility`, `notification_access`,
 `other_access`, `screen_capture`, `location` and `mock_location`.
 
 ### `app_identity`
@@ -98,7 +98,11 @@ APK that could not be hashed as `split_apks:<file name>`.
 
 ### `debug_state`
 
-Whether a Java debugger is attached to the app, or the app waits for one, as Android's `Debug` says.
+Whether a Java debugger is attached to the app, or the app waits for one, as Android's `Debug` says;
+and whether the runtime's debugger thread (JDWP) runs in the app's process, through which a debugger
+attaches. Android starts that thread only in an app built debuggable, or on a phone whose system is
+debuggable (`ro.debuggable` 1, in `system_properties`). In a release build on a phone that is not, it means
+something made your app debuggable, so that a debugger can attach to its code and change it.
 
 **When:** your backend asks for it.
 
@@ -106,6 +110,7 @@ Whether a Java debugger is attached to the app, or the app waits for one, as And
 |---|---|---|---|
 | `debugger_connected` | true/false | yes | a Java debugger is attached |
 | `waiting_for_debugger` | true/false | yes | the app waits for a debugger to attach |
+| `jdwp_thread` | true/false |  | the runtime's debugger thread runs in the app's process (Android collector 11) |
 
 ### `tracer`
 
@@ -383,6 +388,27 @@ not all of them.
 | `transports` | list |  | what carries the default network: `wifi`, `cellular`, `ethernet`, `vpn` |
 | `interfaces` | list |  | the names of the network interfaces that are up, loopback left out — `wlan0`, `rmnet0`, `tun0` — at most 32 |
 
+### `app_host`
+
+Whether Android runs the app itself, or another app runs it inside its own. Some malware installs your
+real app inside an app of its own and watches everything it does: what the person types, and what your
+backend answers. Your app's code is unchanged and the phone needs no root, so no other measurement shows
+it. Such an app keeps your app's package file and data in its own private folder, and its own code runs in
+your app's process; an app that clones others, for a second account, does the same. So `another_app` in
+`loaded_from` or `data_folder`, `uid_matches` false, or any name in `other_app_code` means another app runs
+yours and sees all it does, whatever that app is for. Google Play services is left out of
+`other_app_code`: apps load its code by design.
+
+**When:** every scan, whether or not your backend asks. Android collector 11 and later.
+
+| Field | Type | Needed | Meaning |
+|---|---|---|---|
+| `loaded_from` | one of `installed`, `system`, `another_app`, `elsewhere` | yes | where the app's own package file is: where Android installs apps, a system partition, inside another app's private folder, or elsewhere |
+| `data_folder` | one of `own`, `another_app`, `elsewhere` | yes | where the app's private files are: its own folder, inside another app's, or elsewhere |
+| `uid_matches` | true/false | yes | the process runs under the user ID Android gave the app, and Android names the app for it |
+| `other_app_code` | list | yes | the apps whose code files are mapped into the app's process from their private folders, Google Play services left out, at most 32 |
+| `truncated` | true/false |  | there were more such apps than the 32 a list holds |
+
 ### `local_addresses`
 
 The phone's own IP addresses, per network interface. Loopback and link-local addresses are left out: a
@@ -424,9 +450,11 @@ Every app allowed to read the phone's notifications — one-time codes among the
 
 ### `other_access`
 
-The device-administrator apps that are active, and which of four known remote-control apps are
+The device-administrator apps that are active, which of four known remote-control apps are
 installed: AnyDesk, TeamViewer QuickSupport, RustDesk and AirDroid — a list compiled into the SDK,
-which Android lets an app check without seeing other apps.
+which Android lets an app check without seeing other apps — and the app that handles calls. Malware
+that makes itself the call app can send a call meant for your number to someone else: a call app that
+is not part of the phone's system and that no app store installed is a strong sign of it.
 
 **When:** your backend asks for it and your app enables it — a personal measurement.
 
@@ -435,6 +463,7 @@ which Android lets an app check without seeing other apps.
 | `device_admins` | list of apps | yes | the active device administrators, each with its `service` |
 | `remote_access_apps` | list of apps | yes | the remote-control apps installed, of the four |
 | `truncated` | true/false | yes, false | the phone had more device administrators than the 32 a list holds |
+| `call_app` | an app |  | the app that handles calls, left out where the phone names none (Android collector 11) |
 
 ### `screen_capture`
 

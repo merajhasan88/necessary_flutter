@@ -514,7 +514,8 @@ Each entry in `probe_results` has a `status`: `ok`, `error` (with `error`, and o
 `unsupported` (with `reason`), or `not_enabled` for a personal measurement this app does not collect.
 **A measurement counts only when its status is `ok` and its fields are there** — a status on its own is a
 claim. A field a plugin version does not know is absent; read absent as not measured. Besides what you
-ask for, every report carries `device` and `network`, and on iOS `code_integrity`.
+ask for, every report carries `device` and `network`, on Android `app_host` (from `collector_version`
+11), and on iOS `code_integrity`.
 
 **An `ok` probe may carry `unread`**: the parts it could not read, each with why —
 `{"adb_enabled": "SecurityException", "/sbin/su": "SecurityException"}`. An unread part is not
@@ -529,7 +530,7 @@ or keep their scans apart as older evidence.
 | Probe | What it tells you | Fields |
 |---|---|---|
 | `app_identity` | the installed app: package, the base APK's hash, the signing certificates, flags, install source; from version 8 the split APKs apart | `package_name`, `apk_sha256` (the base APK alone, never its splits), `cert_sha256` (list), `debuggable`, `allow_backup`, `version_name`, `version_code`, `installer_package`, `source_dir`, `current_signers`, `signing_lineage`, `split_apks` (each `name` and `sha256`, sorted by name; empty without splits) |
-| `debug_state` | a Java debugger attached or awaited | `debugger_connected`, `waiting_for_debugger` |
+| `debug_state` | a Java debugger attached or awaited, and the runtime's debugger thread | `debugger_connected`, `waiting_for_debugger`, `jdwp_thread` |
 | `tracer` | another process tracing the app | `tracer_pid`, `seccomp`, `no_new_privs` |
 | `root_files` | known root, su and framework paths that exist; a test-keys build | `found_paths`, `test_keys`, `build_tags` |
 | `root_shell` | whether `su` resolves from the app's shell | `su_found`, `su_path` |
@@ -545,6 +546,7 @@ or keep their scans apart as older evidence.
 | `emulator` | build values typical of an emulator | `suspected`, `reasons`, `model`, `manufacturer`, `product`, `hardware` |
 | `device` | the OS version, the security patch level, model, build, the app's ABI, memory page size | `release`, `sdk_int`, `security_patch`, `manufacturer`, `brand`, `model`, `device`, `build_id`, `fingerprint`, `abi`, `page_size` |
 | `network` | a VPN up on any network; an HTTP proxy set | `vpn_active`, `http_proxy_configured`, `transports`, `interfaces` (names only) |
+| `app_host` | whether Android runs the app itself, or another app runs it inside its own | `loaded_from`, `data_folder`, `uid_matches`, `other_app_code`, `truncated` |
 
 ### iOS
 
@@ -586,7 +588,10 @@ what your own server observed, where the requests come from, and what happened a
 - **The phone never sends a score or a verdict. You decide, on your server.**
 - **Weigh each measurement by how rare it is on genuine phones, and by what is at stake.** Developer
   options, USB debugging and a VPN are common on honest phones; an instrumentation framework in memory, a
-  debugger attached, code changed in memory, or an app that is not your own signed build are not.
+  debugger attached, code changed in memory, or an app that is not your own signed build are not. Nor,
+  on Android, are another app running yours (`app_host`), the runtime's debugger thread in a release
+  build on a phone that is not debuggable (`debug_state`), or a call app that is not part of the system
+  and that no app store installed (`other_access`).
 - **Compare the app with your release** — its files, its code and its size, as section 7.2 describes. A
   modified app is the most direct attack on everything else here: it holds a genuine key.
 - **Compare a phone with itself.** A sudden change between one phone's reports — another signing
@@ -732,7 +737,7 @@ your app asks.
 | `local_addresses` | the phone's own IP addresses, link-local ones left out | `addresses` (`interface`, `address`) | both |
 | `accessibility` | the Accessibility services that are on, and the keyboard in use | `services`, `keyboard`, `settings_only`, `truncated` | Android |
 | `notification_access` | the apps allowed to read notifications, one-time codes among them | `listeners`, `truncated` | Android |
-| `other_access` | device-administrator apps, and known remote-control apps installed | `device_admins`, `remote_access_apps`, `truncated` | Android |
+| `other_access` | device-administrator apps, known remote-control apps installed, and the app that handles calls | `device_admins`, `remote_access_apps`, `truncated`, `call_app` | Android |
 | `screen_capture` | the screen being recorded, mirrored or cast | `recording`, `external_displays`, `recording_status` | both |
 | `location` | the last location the phone already knows — never a fresh fix, never a prompt | `permission` (`precise`, `approximate`, `none`), `latitude`, `longitude`, `accuracy_m`, `age_seconds`, `fix_time`; Android also `provider` | both |
 | `mock_location` | whether that location was faked | `permission`, `mock`, `age_seconds`, `fix_time`; iOS also `accessory` | both |

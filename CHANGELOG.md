@@ -1,3 +1,12 @@
+## 0.1.9
+
+- Android: every scan carries `app_host`, whether another app runs yours inside its own: where Android says
+  your app's package file and data are, whether its process runs under your app's own user ID, and which
+  other apps' code is in its memory. `doc/measurements.md` says how to read it.
+- Android: `debug_state` says whether the runtime's debugger thread runs in your app (`jdwp_thread`).
+- Android: `other_access` names the app that handles calls (`call_app`).
+- The Android collector is version 11.
+
 ## 0.1.8
 
 - The example's steps start the Python sample backend in Python 3.11 or later, with its packages in a

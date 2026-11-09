@@ -18,6 +18,7 @@ import android.os.Build
 import android.os.Debug
 import android.os.SystemClock
 import android.provider.Settings
+import android.telecom.TelecomManager
 import android.view.Display
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityManager
@@ -69,12 +70,15 @@ class IntegrityProbeManager(
         //     error, or names the parts it could not read in "unread"
         //     (ProbeReads.kt). One location read answers both location
         //     measurements, which carry its fix_time.
-        private const val COLLECTOR_VERSION = 10
+        // 11 = volunteers app_host, whether another app runs this one inside
+        //      its own; debug_state names the runtime's debugger thread
+        //      (jdwp_thread); other_access names the app that handles calls.
+        private const val COLLECTOR_VERSION = 11
         // Sent with every scan whether or not the server asked: the server
         // tolerates probes beyond its plan but refuses a report missing one it
         // asked for, so a probe new to this collector stays out of the plan and
         // every older client keeps working.
-        private val volunteeredProbes = listOf("device", "network")
+        private val volunteeredProbes = listOf("device", "network", "app_host")
         // The optional measurements this collector knows. Each is collected
         // only when the server asks for it AND the app enabled it.
         private val optionalMeasurements = setOf(
@@ -191,6 +195,7 @@ class IntegrityProbeManager(
                 "code_integrity" -> probeCodeIntegrity()
                 "device" -> probeDevice()
                 "network" -> probeNetwork()
+                "app_host" -> probeAppHost()
                 "local_addresses" ->
                     if (probe in enabledMeasurements) probeLocalAddresses() else notEnabled()
                 "accessibility" ->
@@ -476,11 +481,23 @@ class IntegrityProbeManager(
                 false
             }
         }.map { appEntry(it) }
-        return ok(
+        val result = linkedMapOf<String, Any>(
+            "status" to "ok",
             "device_admins" to admins,
             "remote_access_apps" to remote,
             "truncated" to (active.size > MAX_APPS)
         )
+        // The app that handles calls (collector 11): malware that makes itself
+        // the call app can send a call meant for a bank to someone else. Left
+        // out where the phone names none.
+        try {
+            (context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager)
+                ?.defaultDialerPackage
+                ?.let { result["call_app"] = appEntry(it) }
+        } catch (error: Throwable) {
+            result["unread"] = mapOf("call_app" to ProbeReads.why(error))
+        }
+        return result
     }
 
     /**
@@ -668,10 +685,30 @@ class IntegrityProbeManager(
         }
     }
 
-    private fun probeDebugState(): Map<String, Any> = ok(
-        "debugger_connected" to Debug.isDebuggerConnected(),
-        "waiting_for_debugger" to Debug.waitingForDebugger()
-    )
+    // The debugger thread (collector 11) as well: a release app on a system
+    // that is not debuggable never has one, whatever a debugger API answers.
+    private fun probeDebugState(): Map<String, Any> {
+        val (names, unreadable) = threadNames()
+        return ok(
+            "debugger_connected" to Debug.isDebuggerConnected(),
+            "waiting_for_debugger" to Debug.waitingForDebugger()
+        ) + ProbeReads.jdwpThread(names, unreadable)
+    }
+
+    private fun probeAppHost(): Map<String, Any> {
+        val info = context.applicationInfo
+        val uid = android.os.Process.myUid()
+        return ProbeReads.appHost(
+            context.packageName,
+            info.sourceDir,
+            info.dataDir,
+            uid,
+            info.uid,
+            runCatching { context.packageManager.getPackagesForUid(uid)?.toList() },
+            runCatching { File("/proc/self/maps").readLines() },
+            MAX_APPS
+        )
+    }
 
     private fun probeRootFiles(): Map<String, Any> = ProbeReads.rootFiles(
         rootPaths.associateWith { path -> runCatching { File(path).exists() } },
@@ -835,10 +872,20 @@ class IntegrityProbeManager(
         // never link GLib themselves, but reported separately so the server can
         // weight them as corroborating rather than conclusive.
         val glibThreads = listOf("gmain", "gdbus", "pool-spawner")
-        // A running process always has threads; none enumerated means the
-        // probe saw nothing, not that nothing is there. A thread that ended
-        // between listing and reading is gone; one whose name could not be
-        // read is unread - a renamed instrumentation thread could be that one.
+        val (names, unreadable) = threadNames()
+        return ProbeReads.threads(
+            names, unreadable, fridaThreads, glibThreads, suspiciousRuntimeTokens, context.packageName
+        )
+    }
+
+    /**
+     * This process's thread names, and how many could not be read. A running
+     * process always has threads; none enumerated means nothing was seen, not
+     * that nothing is there. A thread that ended between listing and reading
+     * is gone; one whose name could not be read is unread - a renamed
+     * instrumentation thread could be that one.
+     */
+    private fun threadNames(): Pair<List<String>, Int> {
         val names = mutableListOf<String>()
         var unreadable = 0
         for (task in File("/proc/self/task").listFiles().orEmpty()) {
@@ -850,9 +897,7 @@ class IntegrityProbeManager(
             }
             names.add(name)
         }
-        return ProbeReads.threads(
-            names, unreadable, fridaThreads, glibThreads, suspiciousRuntimeTokens, context.packageName
-        )
+        return names to unreadable
     }
 
     /**

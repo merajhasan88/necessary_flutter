@@ -266,4 +266,74 @@ class ProbeReadsTest {
         assertTrue(isError(ProbeReads.mockLocation(scan.value)))
         assertEquals(1, reads)
     }
+
+    @Test fun theDebuggerThreadIsNamedOrUnread() {
+        assertEquals(true, ProbeReads.jdwpThread(listOf("main", "ADB-JDWP Connec"), 0)["jdwp_thread"])
+        assertEquals(true, ProbeReads.jdwpThread(listOf("main", "JDWP"), 0)["jdwp_thread"])
+        assertEquals(false, ProbeReads.jdwpThread(listOf("main", "RenderThread", "Jit thread pool"), 0)["jdwp_thread"])
+        // A name not read could be the one: unread, never false.
+        val some = ProbeReads.jdwpThread(listOf("main"), 2)
+        assertNull(some["jdwp_thread"])
+        assertEquals(setOf("jdwp_thread"), unread(some)!!.keys)
+        val none = ProbeReads.jdwpThread(emptyList(), 0)
+        assertNull(none["jdwp_thread"])
+        assertEquals(setOf("jdwp_thread"), unread(none)!!.keys)
+    }
+
+    @Test fun anAppRunByAnotherAppIsNamedByWhereItsFilesAre() {
+        val pkg = "com.example.bank"
+        val maps = listOf(
+            "7000-8000 r--p 00000000 fd:00 1   /data/app/~~a==/com.example.bank-b==/base.apk",
+            "8000-9000 r-xp 00000000 fd:00 2   /data/app/~~a==/com.example.bank-b==/oat/arm64/base.odex",
+            "9000-a000 r--p 00000000 fd:00 3   /data/user_de/0/com.google.android.gms/app_chimera/m/0000001/MapsDynamite.apk",
+            "a000-b000 r--p 00000000 fd:00 4   /data/user/0/com.example.bank/files/fonts/a.ttf",
+            "b000-c000 r--p 00000000 fd:00 5   /data/user/0/com.other.provider/files/shared.ttf",
+            "c000-d000 rw-p 00000000 00:00 0   [anon:dalvik-main space]",
+        )
+        val own = ProbeReads.appHost(
+            pkg, "/data/app/~~a==/com.example.bank-b==/base.apk", "/data/user/0/com.example.bank",
+            10123, 10123, Result.success(listOf(pkg)), Result.success(maps), 32
+        )
+        assertEquals("installed", own["loaded_from"])
+        assertEquals("own", own["data_folder"])
+        assertEquals(true, own["uid_matches"])
+        assertEquals(emptyList<String>(), own["other_app_code"])
+        assertEquals(false, own["truncated"])
+        assertNull(unread(own))
+        // A second user (a work profile, a phone maker's dual apps): still the app's own.
+        val secondUser = ProbeReads.appHost(
+            pkg, "/data/app/x/base.apk", "/data/user/999/com.example.bank/",
+            99910123, 99910123, Result.success(listOf(pkg)), Result.success(maps), 32
+        )
+        assertEquals("own", secondUser["data_folder"])
+        assertEquals("system", ProbeReads.appHost(
+            pkg, "/product/app/Bank/Bank.apk", "/data/user/0/$pkg", 1, 1,
+            Result.success(listOf(pkg)), Result.success(maps), 32
+        )["loaded_from"])
+        // Run inside another app: its package file, data and code are in that app's folder.
+        val host = "io.va.exposed"
+        val hosted = ProbeReads.appHost(
+            pkg, "/data/user/0/$host/virtual/data/app/$pkg/base.apk",
+            "/data/user/0/$host/virtual/data/user/0/$pkg", 10200, 10200, Result.success(listOf(host)),
+            Result.success(listOf("1000-2000 r--p 00000000 fd:00 9   /data/user/0/$host/virtual/data/app/$pkg/base.apk")), 32
+        )
+        assertEquals("another_app", hosted["loaded_from"])
+        assertEquals("another_app", hosted["data_folder"])
+        assertEquals(false, hosted["uid_matches"])
+        assertEquals(listOf(host), hosted["other_app_code"])
+        assertEquals(false, ProbeReads.appHost(
+            pkg, "/data/app/x/base.apk", "/data/user/0/$pkg", 10200, 10123,
+            Result.success(listOf(pkg)), Result.success(maps), 32
+        )["uid_matches"])
+        // Nothing read is an error; a part not read is unread, never a clean answer.
+        assertTrue(isError(ProbeReads.appHost(
+            pkg, null, null, 1, 1, Result.failure(SecurityException("refused")), Result.failure(IOException("denied")), 32
+        )))
+        val partial = ProbeReads.appHost(
+            pkg, "/data/app/x/base.apk", "/data/user/0/$pkg", 1, 1,
+            Result.success(listOf(pkg)), Result.failure(IOException("denied")), 32
+        )
+        assertNull(partial["other_app_code"])
+        assertEquals(setOf("other_app_code"), unread(partial)!!.keys)
+    }
 }

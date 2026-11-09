@@ -30,6 +30,11 @@
         <intent>
             <action android:name="android.app.action.DEVICE_ADMIN_ENABLED"/>
         </intent>
+        <!-- The apps that can handle calls, so other_access can read who installed
+             the one that does. -->
+        <intent>
+            <action android:name="android.intent.action.DIAL"/>
+        </intent>
         <!-- Remote-control apps scammers have victims install; the same list as
              IntegrityProbeManager.remoteAccessPackages. -->
         <package android:name="com.anydesk.anydeskandroid"/>
