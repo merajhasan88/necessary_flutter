@@ -1,8 +1,9 @@
 ## 0.1.9
 
 - Android: every scan carries `app_host`, whether another app runs yours inside its own: where Android says
-  your app's package file and data are, whether its process runs under your app's own user ID, and which
-  other apps' code is in its memory. `doc/measurements.md` says how to read it.
+  your app's package file and data are, whether its process runs under your app's own user ID, which other
+  apps Android names for that user ID, and which other apps' code is in its memory. `doc/measurements.md`
+  says how to read it.
 - Android: `debug_state` says whether the runtime's debugger thread runs in your app (`jdwp_thread`).
 - Android: `other_access` names the app that handles calls (`call_app`).
 - Android: `emulator` also reads the processor and what the device is (`form_factor`, `cpu_vendor`,

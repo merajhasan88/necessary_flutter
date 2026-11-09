@@ -406,12 +406,16 @@ not all of them.
 
 Whether Android runs the app itself, or another app runs it inside its own. Some malware installs your
 real app inside an app of its own and watches everything it does: what the person types, and what your
-backend answers. Your app's code is unchanged and the phone needs no root, so no other measurement shows
-it. Such an app keeps your app's package file and data in its own private folder, and its own code runs in
-your app's process; an app that clones others, for a second account, does the same. So `another_app` in
-`loaded_from` or `data_folder`, `uid_matches` false, or any name in `other_app_code` means another app runs
-yours and sees all it does, whatever that app is for. Google Play services is left out of
-`other_app_code`: apps load its code by design.
+backend answers. The phone needs no root for it. Such an app keeps your app's data, and may keep its
+package file, in its own private folder; its own code runs in your app's process, and it can answer your
+app's questions to Android for it. An app that clones others, for a second account, does the same. So
+`another_app` in `loaded_from` or `data_folder`, `uid_matches` false, any name in `other_app_code`, or a
+name in `uid_other_apps` that is not one of your own apps means another app runs yours and sees all it
+does, whatever that app is for. Only apps signed with your app's own key can share its user ID
+(`sharedUserId`), so for most apps `uid_other_apps` is empty. Because such an app can answer for your app's
+user ID, `uid_matches` true clears nothing the other fields show. Google Play services is left out of
+`other_app_code`: apps load its code by design. An app that runs yours may also change code in your app's
+memory, which `code_integrity` and `exec_mappings` read.
 
 **When:** every scan, whether or not your backend asks. Android collector 11 and later.
 
@@ -419,9 +423,10 @@ yours and sees all it does, whatever that app is for. Google Play services is le
 |---|---|---|---|
 | `loaded_from` | one of `installed`, `system`, `another_app`, `elsewhere` | yes | where the app's own package file is: where Android installs apps, a system partition, inside another app's private folder, or elsewhere |
 | `data_folder` | one of `own`, `another_app`, `elsewhere` | yes | where the app's private files are: its own folder, inside another app's, or elsewhere |
-| `uid_matches` | true/false | yes | the process runs under the user ID Android gave the app, and Android names the app for it |
+| `uid_matches` | true/false | yes | the process's user ID is the one the app's own records give, and Android names the app for it; an app that runs yours can answer both |
+| `uid_other_apps` | list | yes | the other apps Android names for the process's user ID, at most 32; only apps signed with your app's own key can share it |
 | `other_app_code` | list | yes | the apps whose code files are mapped into the app's process from their private folders, Google Play services left out, at most 32 |
-| `truncated` | true/false |  | there were more such apps than the 32 a list holds |
+| `truncated` | true/false |  | `uid_other_apps` or `other_app_code` had more apps than the 32 a list holds |
 
 ### `local_addresses`
 

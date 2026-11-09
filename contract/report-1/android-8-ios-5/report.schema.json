@@ -1333,7 +1333,19 @@
           "description": "where the app's private files are: its own folder, inside another app's, or elsewhere"
         },
         "uid_matches": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "the process's user ID is the one the app's own records give, and Android names the app for it; an app that runs this one can answer both"
+        },
+        "uid_other_apps": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)*$"
+          },
+          "description": "the other apps Android names for the process's user ID, sorted, at most 32; only apps signed with the app's own key can share it"
         },
         "other_app_code": {
           "type": "array",
@@ -1347,7 +1359,8 @@
           "description": "the apps whose code files are mapped into this process from their private folders, Google Play services left out, sorted, at most 32"
         },
         "truncated": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "uid_other_apps or other_app_code had more apps than the 32 it holds"
         }
       },
       "additionalProperties": true,
@@ -1357,6 +1370,7 @@
         "loaded_from",
         "data_folder",
         "uid_matches",
+        "uid_other_apps",
         "other_app_code"
       ]
     },

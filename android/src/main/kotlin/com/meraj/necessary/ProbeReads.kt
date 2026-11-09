@@ -374,14 +374,18 @@ object ProbeReads {
     private val codeFiles = listOf(".apk", ".dex", ".odex", ".vdex", ".oat", ".art", ".so", ".jar")
     // Apps load Google Play services' code by design (its dynamite modules), from its own folder.
     private const val PLAY_SERVICES = "com.google.android.gms"
+    private val appHostParts = listOf("loaded_from", "data_folder", "uid_matches", "uid_other_apps", "other_app_code")
 
     /**
      * Whether Android runs the app itself, or another app runs it inside its
-     * own (collector 11). An app that does keeps this one's package file and
-     * data in its own private folder, and its code in this process: every
-     * reading is where Android itself says the files are, or what the kernel
-     * maps, and the app's own code is unchanged, so no other measurement
-     * shows it. A part not read is unread, never a clean answer.
+     * own (collector 11). An app that does keeps this one's data, and may keep
+     * its package file, in its own private folder, and runs its own code in
+     * this process. The readings: where Android says the package file and the
+     * data are, the process's user ID against the app's, the other apps
+     * Android names for that user ID, and the code files mapped in from other
+     * apps' private folders. A host can answer the app's questions to Android
+     * for it, so one part reading clean clears nothing another part shows.
+     * A part not read is unread, never a clean answer.
      */
     fun appHost(
         packageName: String,
@@ -415,12 +419,20 @@ object ProbeReads {
                 else -> "another_app"
             }
         }
+        var truncated: Boolean? = null
         val failed = packagesForUid.exceptionOrNull()
         if (failed != null) {
             unread["uid_matches"] = why(failed)
+            unread["uid_other_apps"] = why(failed)
         } else {
             val packages = packagesForUid.getOrNull()
             result["uid_matches"] = processUid == appUid && packages != null && packageName in packages
+            // Android lets only apps signed with this app's own key share its
+            // user ID (sharedUserId), so any other name is either such an app
+            // or an answer that did not come from Android.
+            val others = (packages ?: emptyList()).filter { it != packageName }.toSortedSet()
+            result["uid_other_apps"] = others.take(maxApps).map { it.take(128) }
+            truncated = others.size > maxApps
         }
         val lines = mapsLines.getOrNull()
         if (lines.isNullOrEmpty()) {
@@ -439,9 +451,13 @@ object ProbeReads {
                 }
             }
             result["other_app_code"] = owners.take(maxApps).map { it.take(128) }
-            result["truncated"] = owners.size > maxApps
+            truncated = (truncated ?: false) || owners.size > maxApps
         }
-        if (unread.size == 4) return error("nothing of where the app runs could be read: " + unread.values.first())
+        // One flag for both lists: a list read held more apps than it can.
+        if (truncated != null) result["truncated"] = truncated
+        if (unread.keys.containsAll(appHostParts)) {
+            return error("nothing of where the app runs could be read: " + unread.values.first())
+        }
         return withUnread(result, unread)
     }
 

@@ -297,6 +297,7 @@ class ProbeReadsTest {
         assertEquals("installed", own["loaded_from"])
         assertEquals("own", own["data_folder"])
         assertEquals(true, own["uid_matches"])
+        assertEquals(emptyList<String>(), own["uid_other_apps"])
         assertEquals(emptyList<String>(), own["other_app_code"])
         assertEquals(false, own["truncated"])
         assertNull(unread(own))
@@ -320,11 +321,45 @@ class ProbeReadsTest {
         assertEquals("another_app", hosted["loaded_from"])
         assertEquals("another_app", hosted["data_folder"])
         assertEquals(false, hosted["uid_matches"])
+        assertEquals(listOf(host), hosted["uid_other_apps"])
         assertEquals(listOf(host), hosted["other_app_code"])
         assertEquals(false, ProbeReads.appHost(
             pkg, "/data/app/x/base.apk", "/data/user/0/$pkg", 10200, 10123,
             Result.success(listOf(pkg)), Result.success(maps), 32
         )["uid_matches"])
+        // A host that answers the app's questions to Android: the package file is where Android
+        // installed it and the user ID agrees with the app's records, but the data is in the
+        // host's folder and the answer names apps for that user ID that the app cannot share it with.
+        val answered = ProbeReads.appHost(
+            pkg, "/data/app/~~a==/com.example.bank-b==/base.apk", "/data/user/0/com.example.host/plugins/$pkg",
+            10410, 10410, Result.success(listOf(pkg, "com.google.android.gsf", "com.google.android.backuptransport")),
+            Result.success(maps), 32
+        )
+        assertEquals("installed", answered["loaded_from"])
+        assertEquals("another_app", answered["data_folder"])
+        assertEquals(true, answered["uid_matches"])
+        assertEquals(listOf("com.google.android.backuptransport", "com.google.android.gsf"), answered["uid_other_apps"])
+        // The app's own sibling apps sharing its user ID are named too; at most 32, then truncated.
+        val siblings = (1..40).map { "com.example.bank.part%02d".format(it) }
+        val shared = ProbeReads.appHost(
+            pkg, "/data/app/x/base.apk", "/data/user/0/$pkg", 10123, 10123,
+            Result.success(listOf(pkg) + siblings), Result.success(maps), 32
+        )
+        assertEquals(siblings.take(32), shared["uid_other_apps"])
+        assertEquals(true, shared["truncated"])
+        // A user ID Android names no app for: not the app's, and no other app named.
+        val nameless = ProbeReads.appHost(
+            pkg, "/data/app/x/base.apk", "/data/user/0/$pkg", 10123, 10123,
+            Result.success(null), Result.success(maps), 32
+        )
+        assertEquals(false, nameless["uid_matches"])
+        assertEquals(emptyList<String>(), nameless["uid_other_apps"])
+        val noAnswer = ProbeReads.appHost(
+            pkg, "/data/app/x/base.apk", "/data/user/0/$pkg", 10123, 10123,
+            Result.failure(SecurityException("refused")), Result.success(maps), 32
+        )
+        assertEquals(setOf("uid_matches", "uid_other_apps"), unread(noAnswer)!!.keys)
+        assertEquals(false, noAnswer["truncated"])
         // Nothing read is an error; a part not read is unread, never a clean answer.
         assertTrue(isError(ProbeReads.appHost(
             pkg, null, null, 1, 1, Result.failure(SecurityException("refused")), Result.failure(IOException("denied")), 32
