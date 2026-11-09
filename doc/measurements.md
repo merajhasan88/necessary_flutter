@@ -102,7 +102,7 @@ Whether a Java debugger is attached to the app, or the app waits for one, as And
 and whether the runtime's debugger thread (JDWP) runs in the app's process, through which a debugger
 attaches. Android starts that thread only in an app built debuggable, or on a phone whose system is
 debuggable (`ro.debuggable` 1, in `system_properties`). In a release build on a phone that is not, it means
-something made your app debuggable, so that a debugger can attach to its code and change it. Genuine people
+something made your app debuggable, so that a debugger can attach to its code and change it. Genuine users
 show the thread in two cases, both in the report: your own debuggable builds (`debuggable`, in
 `app_identity`), and phones whose system is debuggable, such as developer builds of Android, some custom
 systems and emulators, where it runs in every app. An `ro.debuggable` that could not be read decides
@@ -346,8 +346,8 @@ Mac). On a phone or tablet these count in `suspected` as `cpu`, `hypervisor` and
 PC, a car or a TV may run Android apps on such hardware: `form_factor` says which, and then they do not
 count. To check a report that only its processor flagged, read `cpu_model` and the build's `model`: An
 emulator's processor often names itself, for example `Android virtual processor`, and a phone's model
-name on an x86 processor is a contradiction. Genuine people show it too: people who use Android apps on a
-computer through an emulator, developers and testers, and phones and tablets with Intel processors, sold
+name on an x86 processor is a contradiction. Genuine users show it too: users of Android apps on a computer,
+through an emulator, developers and testers, and users of phones and tablets with Intel processors, sold
 until about 2016. The integration guide, section 7.7, says how to tell them apart and what to do.
 
 **When:** your backend asks for it.
@@ -422,7 +422,7 @@ does, whatever that app is for. Only apps signed with your app's own key can sha
 (`sharedUserId`), so for most apps `uid_other_apps` is empty. Because such an app can answer for your app's
 user ID, `uid_matches` true clears nothing the other fields show. Google Play services is left out of
 `other_app_code`: Apps load its code by design. An app that runs yours may also change code in your app's
-memory, which `code_integrity` and `exec_mappings` read. Genuine people show it too, with an app that clones
+memory, which `code_integrity` and `exec_mappings` read. Genuine users show it too, with an app that clones
 others so that they can sign in to a second account. A phone's own second user, dual-app feature or work
 profile is not another app: Your app keeps its own folder there, under another user. Names in
 `uid_other_apps` can be your own apps, where they share a user ID. The integration guide, section 7.7, says
@@ -485,7 +485,7 @@ The device-administrator apps that are active, which of four known remote-contro
 installed: AnyDesk, TeamViewer QuickSupport, RustDesk and AirDroid — a list compiled into the SDK,
 which Android lets an app check without seeing other apps — and the app that handles calls. Malware
 that makes itself the call app can send a call meant for your number to someone else: A call app that
-is not part of the phone's system and that no app store installed is a strong sign of it. Genuine people
+is not part of the phone's system and that no app store installed is a strong sign of it. Genuine users
 show it too, with a call app they chose: one installed from a website or a computer names no store, and one
 from another store names that store as its `installer`. The integration guide, section 7.7, says what to
 do.
