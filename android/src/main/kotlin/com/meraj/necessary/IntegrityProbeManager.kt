@@ -707,6 +707,10 @@ class IntegrityProbeManager(
             info.uid,
             runCatching { context.packageManager.getPackagesForUid(uid)?.toList() },
             runCatching { File("/proc/self/maps").readLines() },
+            // What a process the app starts is made to load first: in the app's own
+            // environment, and as one started process sees it.
+            runCatching { System.getenv("LD_PRELOAD") },
+            runCommand(listOf("/system/bin/sh", "-c", "echo \"\$LD_PRELOAD\"")),
             MAX_APPS
         )
     }

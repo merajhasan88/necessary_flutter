@@ -363,13 +363,19 @@ object ProbeReads {
         Regex("^/mnt/expand/[^/]+/user(?:_de)?/\\d+/([^/]+)/"),
     )
 
+    // An installed app's folder is its package name, '-' (which no package name holds) and a random
+    // part: /data/app/<package>-<x>/, under /data/app/~~<x>/ from Android 11, or on adopted storage.
+    private val installedOwner = Regex("^(?:/data/app/|/mnt/expand/[^/]+/app/)(?:~~[^/]+/)?([A-Za-z][A-Za-z0-9_.]*)-[^/]*/")
+
     /**
-     * installed: where the package manager puts installed apps; system: a
-     * system partition; app_data: an app's private folder, owner naming the
-     * app; elsewhere: anywhere else.
+     * installed: where the package manager puts installed apps, owner naming
+     * the app where its folder does; system: a system partition; app_data: an
+     * app's private folder, owner naming the app; elsewhere: anywhere else.
      */
     fun place(path: String): Place {
-        if (installedApps.any { it.containsMatchIn(path) }) return Place("installed")
+        if (installedApps.any { it.containsMatchIn(path) }) {
+            return Place("installed", installedOwner.find(path)?.groupValues?.get(1))
+        }
         if (systemPartitions.any { path.startsWith(it) }) return Place("system")
         for (pattern in appData) pattern.find(path)?.let { return Place("app_data", it.groupValues[1]) }
         return Place("elsewhere")
@@ -379,7 +385,14 @@ object ProbeReads {
     private val codeFiles = listOf(".apk", ".dex", ".odex", ".vdex", ".oat", ".art", ".so", ".jar")
     // Apps load Google Play services' code by design (its dynamite modules), from its own folder.
     private const val PLAY_SERVICES = "com.google.android.gms"
-    private val appHostParts = listOf("loaded_from", "data_folder", "uid_matches", "uid_other_apps", "other_app_code")
+    private val appHostParts = listOf(
+        "loaded_from", "data_folder", "uid_matches", "uid_other_apps", "preload_other_apps", "other_app_code"
+    )
+    // LD_PRELOAD lists libraries split by spaces or colons, as Android's linker reads it.
+    private fun preloadList(value: String?): List<String> =
+        value.orEmpty().split(' ', ':', '\n', '\t').filter { it.isNotEmpty() }
+    // What a started process's linker prints when it cannot load a library it was given.
+    private val notLoaded = Regex("CANNOT LINK EXECUTABLE \"[^\"]*\": library \"([^\"]+)\"")
 
     /**
      * Whether Android runs the app itself, or another app runs it inside its
@@ -387,10 +400,17 @@ object ProbeReads {
      * its package file, in its own private folder, and runs its own code in
      * this process. The readings: where Android says the package file and the
      * data are, the process's user ID against the app's, the other apps
-     * Android names for that user ID, and the code files mapped in from other
-     * apps' private folders. A host can answer the app's questions to Android
-     * for it, so one part reading clean clears nothing another part shows.
-     * A part not read is unread, never a clean answer.
+     * Android names for that user ID, the other apps whose libraries a process
+     * the app starts is made to load first, and the code files mapped in from
+     * other apps' private folders. A host can answer the app's questions to
+     * Android for it, so one part reading clean clears nothing another part
+     * shows. A part not read is unread, never a clean answer.
+     *
+     * The libraries to load first (LD_PRELOAD) are read twice: in the app's
+     * own environment, which every process it starts inherits, and in one
+     * process it starts -- the list that process was given or, when it could
+     * not start, the library its linker could not load. Libraries outside
+     * apps' folders are not named.
      */
     fun appHost(
         packageName: String,
@@ -400,6 +420,8 @@ object ProbeReads {
         appUid: Int,
         packagesForUid: Result<List<String>?>,
         mapsLines: Result<List<String>>,
+        ownPreload: Result<String?>,
+        startedPreload: CommandResult,
         maxApps: Int,
     ): Map<String, Any> {
         val result = ok()
@@ -439,6 +461,24 @@ object ProbeReads {
             result["uid_other_apps"] = others.take(maxApps).map { it.take(128) }
             truncated = others.size > maxApps
         }
+        val preloads = preloadList(ownPreload.getOrNull()).toMutableList()
+        val startedRead = when {
+            startedPreload.problem == null -> { preloads += preloadList(startedPreload.output); true }
+            else -> {
+                val library = if (startedPreload.started && startedPreload.finished) {
+                    notLoaded.find(startedPreload.output)?.groupValues?.get(1)
+                } else null
+                if (library != null) preloads += library
+                library != null
+            }
+        }
+        val preloaders = preloads.mapNotNull { place(it).owner }.filter { it != packageName }.toSortedSet()
+        if (startedRead || preloaders.isNotEmpty()) {
+            result["preload_other_apps"] = preloaders.take(maxApps).map { it.take(128) }
+            truncated = (truncated ?: false) || preloaders.size > maxApps
+        } else {
+            unread["preload_other_apps"] = "a started process " + startedPreload.problem
+        }
         val lines = mapsLines.getOrNull()
         if (lines.isNullOrEmpty()) {
             unread["other_app_code"] = mapsLines.exceptionOrNull()?.let { why(it) } ?: "/proc/self/maps returned no lines"
@@ -458,7 +498,7 @@ object ProbeReads {
             result["other_app_code"] = owners.take(maxApps).map { it.take(128) }
             truncated = (truncated ?: false) || owners.size > maxApps
         }
-        // One flag for both lists: a list read held more apps than it can.
+        // One flag for the three lists: a list read held more apps than it can.
         if (truncated != null) result["truncated"] = truncated
         if (unread.keys.containsAll(appHostParts)) {
             return error("nothing of where the app runs could be read: " + unread.values.first())

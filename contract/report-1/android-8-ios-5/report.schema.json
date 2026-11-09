@@ -1347,6 +1347,17 @@
           },
           "description": "the other apps Android names for the process's user ID, sorted, at most 32; only apps signed with the app's own key can share it"
         },
+        "preload_other_apps": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)*$"
+          },
+          "description": "the other apps whose libraries a process the app starts is made to load first (LD_PRELOAD), sorted, at most 32; libraries outside apps' folders are not named"
+        },
         "other_app_code": {
           "type": "array",
           "maxItems": 32,
@@ -1360,7 +1371,7 @@
         },
         "truncated": {
           "type": "boolean",
-          "description": "uid_other_apps or other_app_code had more apps than the 32 it holds"
+          "description": "uid_other_apps, preload_other_apps or other_app_code had more apps than the 32 it holds"
         }
       },
       "additionalProperties": true,
@@ -1371,6 +1382,7 @@
         "data_folder",
         "uid_matches",
         "uid_other_apps",
+        "preload_other_apps",
         "other_app_code"
       ]
     },

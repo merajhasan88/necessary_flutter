@@ -546,7 +546,7 @@ or keep their scans apart as older evidence.
 | `emulator` | build values typical of an emulator, and the processor and the form of the device | `suspected`, `reasons`, `model`, `manufacturer`, `product`, `hardware`, `form_factor`, `cpu_vendor`, `cpu_implementers`, `cpu_model`, `hypervisor`, `abis`, `machine` |
 | `device` | the OS version, the security patch level, model, build, the app's ABI, memory page size | `release`, `sdk_int`, `security_patch`, `manufacturer`, `brand`, `model`, `device`, `build_id`, `fingerprint`, `abi`, `page_size` |
 | `network` | a VPN up on any network; an HTTP proxy set | `vpn_active`, `http_proxy_configured`, `transports`, `interfaces` (names only) |
-| `app_host` | whether Android runs the app itself, or another app runs it inside its own | `loaded_from`, `data_folder`, `uid_matches`, `uid_other_apps`, `other_app_code`, `truncated` |
+| `app_host` | whether Android runs the app itself, or another app runs it inside its own | `loaded_from`, `data_folder`, `uid_matches`, `uid_other_apps`, `preload_other_apps`, `other_app_code`, `truncated` |
 
 ### iOS
 

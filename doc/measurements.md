@@ -408,9 +408,10 @@ Whether Android runs the app itself, or another app runs it inside its own. Some
 real app inside an app of its own and watches everything it does: what the person types, and what your
 backend answers. The phone needs no root for it. Such an app keeps your app's data, and may keep its
 package file, in its own private folder; its own code runs in your app's process, and it can answer your
-app's questions to Android for it. An app that clones others, for a second account, does the same. So
-`another_app` in `loaded_from` or `data_folder`, `uid_matches` false, any name in `other_app_code`, or a
-name in `uid_other_apps` that is not one of your own apps means another app runs yours and sees all it
+app's questions to Android for it. It can also give every process your app starts a library of its own to
+load first. An app that clones others, for a second account, does the same. So `another_app` in
+`loaded_from` or `data_folder`, `uid_matches` false, any name in `preload_other_apps` or `other_app_code`,
+or a name in `uid_other_apps` that is not one of your own apps means another app runs yours and sees all it
 does, whatever that app is for. Only apps signed with your app's own key can share its user ID
 (`sharedUserId`), so for most apps `uid_other_apps` is empty. Because such an app can answer for your app's
 user ID, `uid_matches` true clears nothing the other fields show. Google Play services is left out of
@@ -425,8 +426,9 @@ memory, which `code_integrity` and `exec_mappings` read.
 | `data_folder` | one of `own`, `another_app`, `elsewhere` | yes | where the app's private files are: its own folder, inside another app's, or elsewhere |
 | `uid_matches` | true/false | yes | the process's user ID is the one the app's own records give, and Android names the app for it; an app that runs yours can answer both |
 | `uid_other_apps` | list | yes | the other apps Android names for the process's user ID, at most 32; only apps signed with your app's own key can share it |
+| `preload_other_apps` | list | yes | the other apps whose libraries a process your app starts is made to load first (`LD_PRELOAD`), as your app's environment and one process it starts give them, at most 32; libraries outside apps' folders are not named |
 | `other_app_code` | list | yes | the apps whose code files are mapped into the app's process from their private folders, Google Play services left out, at most 32 |
-| `truncated` | true/false |  | `uid_other_apps` or `other_app_code` had more apps than the 32 a list holds |
+| `truncated` | true/false |  | `uid_other_apps`, `preload_other_apps` or `other_app_code` had more apps than the 32 a list holds |
 
 ### `local_addresses`
 

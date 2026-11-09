@@ -26,6 +26,9 @@ class ProbeReadsTest {
         true, true, 1,
         "CANNOT LINK EXECUTABLE \"/system/bin/sh\": library \"/data/app/com.example.host-a==/lib/arm64/libhook.so\" not found\n"
     )
+    // Nothing to load first, in the app's environment or in a process it starts (which echoes an empty line).
+    private val noPreload = Result.success<String?>(null)
+    private val startedClean = CommandResult(true, true, 0, "\n")
 
     private fun isError(result: Map<String, Any>) = result["status"] == "error"
 
@@ -310,31 +313,32 @@ class ProbeReadsTest {
         )
         val own = ProbeReads.appHost(
             pkg, "/data/app/~~a==/com.example.bank-b==/base.apk", "/data/user/0/com.example.bank",
-            10123, 10123, Result.success(listOf(pkg)), Result.success(maps), 32
+            10123, 10123, Result.success(listOf(pkg)), Result.success(maps), noPreload, startedClean, 32
         )
         assertEquals("installed", own["loaded_from"])
         assertEquals("own", own["data_folder"])
         assertEquals(true, own["uid_matches"])
         assertEquals(emptyList<String>(), own["uid_other_apps"])
+        assertEquals(emptyList<String>(), own["preload_other_apps"])
         assertEquals(emptyList<String>(), own["other_app_code"])
         assertEquals(false, own["truncated"])
         assertNull(unread(own))
         // A second user (a work profile, a phone maker's dual apps): still the app's own.
         val secondUser = ProbeReads.appHost(
             pkg, "/data/app/x/base.apk", "/data/user/999/com.example.bank/",
-            99910123, 99910123, Result.success(listOf(pkg)), Result.success(maps), 32
+            99910123, 99910123, Result.success(listOf(pkg)), Result.success(maps), noPreload, startedClean, 32
         )
         assertEquals("own", secondUser["data_folder"])
         assertEquals("system", ProbeReads.appHost(
             pkg, "/product/app/Bank/Bank.apk", "/data/user/0/$pkg", 1, 1,
-            Result.success(listOf(pkg)), Result.success(maps), 32
+            Result.success(listOf(pkg)), Result.success(maps), noPreload, startedClean, 32
         )["loaded_from"])
         // Run inside another app: its package file, data and code are in that app's folder.
         val host = "io.va.exposed"
         val hosted = ProbeReads.appHost(
             pkg, "/data/user/0/$host/virtual/data/app/$pkg/base.apk",
             "/data/user/0/$host/virtual/data/user/0/$pkg", 10200, 10200, Result.success(listOf(host)),
-            Result.success(listOf("1000-2000 r--p 00000000 fd:00 9   /data/user/0/$host/virtual/data/app/$pkg/base.apk")), 32
+            Result.success(listOf("1000-2000 r--p 00000000 fd:00 9   /data/user/0/$host/virtual/data/app/$pkg/base.apk")), noPreload, startedClean, 32
         )
         assertEquals("another_app", hosted["loaded_from"])
         assertEquals("another_app", hosted["data_folder"])
@@ -343,7 +347,7 @@ class ProbeReadsTest {
         assertEquals(listOf(host), hosted["other_app_code"])
         assertEquals(false, ProbeReads.appHost(
             pkg, "/data/app/x/base.apk", "/data/user/0/$pkg", 10200, 10123,
-            Result.success(listOf(pkg)), Result.success(maps), 32
+            Result.success(listOf(pkg)), Result.success(maps), noPreload, startedClean, 32
         )["uid_matches"])
         // A host that answers the app's questions to Android: the package file is where Android
         // installed it and the user ID agrees with the app's records, but the data is in the
@@ -351,7 +355,7 @@ class ProbeReadsTest {
         val answered = ProbeReads.appHost(
             pkg, "/data/app/~~a==/com.example.bank-b==/base.apk", "/data/user/0/com.example.host/plugins/$pkg",
             10410, 10410, Result.success(listOf(pkg, "com.google.android.gsf", "com.google.android.backuptransport")),
-            Result.success(maps), 32
+            Result.success(maps), noPreload, startedClean, 32
         )
         assertEquals("installed", answered["loaded_from"])
         assertEquals("another_app", answered["data_folder"])
@@ -361,33 +365,71 @@ class ProbeReadsTest {
         val siblings = (1..40).map { "com.example.bank.part%02d".format(it) }
         val shared = ProbeReads.appHost(
             pkg, "/data/app/x/base.apk", "/data/user/0/$pkg", 10123, 10123,
-            Result.success(listOf(pkg) + siblings), Result.success(maps), 32
+            Result.success(listOf(pkg) + siblings), Result.success(maps), noPreload, startedClean, 32
         )
         assertEquals(siblings.take(32), shared["uid_other_apps"])
         assertEquals(true, shared["truncated"])
         // A user ID Android names no app for: not the app's, and no other app named.
         val nameless = ProbeReads.appHost(
             pkg, "/data/app/x/base.apk", "/data/user/0/$pkg", 10123, 10123,
-            Result.success(null), Result.success(maps), 32
+            Result.success(null), Result.success(maps), noPreload, startedClean, 32
         )
         assertEquals(false, nameless["uid_matches"])
         assertEquals(emptyList<String>(), nameless["uid_other_apps"])
         val noAnswer = ProbeReads.appHost(
             pkg, "/data/app/x/base.apk", "/data/user/0/$pkg", 10123, 10123,
-            Result.failure(SecurityException("refused")), Result.success(maps), 32
+            Result.failure(SecurityException("refused")), Result.success(maps), noPreload, startedClean, 32
         )
         assertEquals(setOf("uid_matches", "uid_other_apps"), unread(noAnswer)!!.keys)
         assertEquals(false, noAnswer["truncated"])
         // Nothing read is an error; a part not read is unread, never a clean answer.
         assertTrue(isError(ProbeReads.appHost(
-            pkg, null, null, 1, 1, Result.failure(SecurityException("refused")), Result.failure(IOException("denied")), 32
+            pkg, null, null, 1, 1, Result.failure(SecurityException("refused")), Result.failure(IOException("denied")),
+            Result.failure(SecurityException("refused")), timedOut, 32
         )))
         val partial = ProbeReads.appHost(
             pkg, "/data/app/x/base.apk", "/data/user/0/$pkg", 1, 1,
-            Result.success(listOf(pkg)), Result.failure(IOException("denied")), 32
+            Result.success(listOf(pkg)), Result.failure(IOException("denied")), noPreload, startedClean, 32
         )
         assertNull(partial["other_app_code"])
         assertEquals(setOf("other_app_code"), unread(partial)!!.keys)
+        assertEquals(emptyList<String>(), partial["preload_other_apps"])
+    }
+
+    @Test fun theLibrariesAStartedProcessIsMadeToLoadAreNamedByTheirApps() {
+        val pkg = "com.example.bank"
+        val maps = Result.success(listOf("7000-8000 r--p 00000000 fd:00 1   /data/app/com.example.bank-b==/base.apk"))
+        fun host(own: Result<String?>, started: CommandResult) = ProbeReads.appHost(
+            pkg, "/data/app/com.example.bank-b==/base.apk", "/data/user/0/$pkg", 10123, 10123,
+            Result.success(listOf(pkg)), maps, own, started, 32
+        )
+        assertEquals(emptyList<String>(), host(noPreload, startedClean)["preload_other_apps"])
+        assertNull(unread(host(noPreload, startedClean)))
+        // A started process its linker could not start, for another app's library.
+        assertEquals(listOf("com.example.host"), host(noPreload, notLinked)["preload_other_apps"])
+        // The list a started process was given: the system's libraries and the app's own are not named.
+        val given = CommandResult(
+            true, true, 0,
+            "/data/app/~~r==/com.example.host-y==/lib/arm64/libhook.so:/system/lib64/libc++.so " +
+                "/data/app/com.example.bank-b==/lib/arm64/libown.so\n"
+        )
+        assertEquals(listOf("com.example.host"), host(noPreload, given)["preload_other_apps"])
+        // The app's own environment, which every process it starts inherits; a private folder counts too.
+        assertEquals(listOf("com.example.other"), host(
+            Result.success("/data/user/0/com.example.other/files/libx.so"), startedClean
+        )["preload_other_apps"])
+        // No started process read is unread, unless the environment named an app already.
+        val unanswered = host(noPreload, timedOut)
+        assertNull(unanswered["preload_other_apps"])
+        assertTrue(unread(unanswered)!!.getValue("preload_other_apps").startsWith("a started process did not finish"))
+        assertTrue(unread(host(noPreload, ran.copy(exitCode = 2, output = "sh: no\n")))!!.containsKey("preload_other_apps"))
+        assertEquals(listOf("com.example.other"), host(
+            Result.success("/data/app/com.example.other-q==/lib/arm64/libx.so"), notStarted
+        )["preload_other_apps"])
+        // An installed app's folder names it: on adopted storage, and as Android 7 named folders.
+        assertEquals("com.example.host", ProbeReads.place("/mnt/expand/1234-abcd/app/com.example.host-1/lib/arm/libh.so").owner)
+        assertEquals("com.example.host", ProbeReads.place("/data/app/com.example.host-1/base.apk").owner)
+        assertNull(ProbeReads.place("/data/app/x/base.apk").owner)
     }
 
     private val emulatorCpu = listOf(
