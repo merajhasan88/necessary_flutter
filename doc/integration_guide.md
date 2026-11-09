@@ -592,7 +592,8 @@ what your own server observed, where the requests come from, and what happened a
   on Android, are another app running yours (`app_host`), the runtime's debugger thread in a release
   build on a phone that is not debuggable (`debug_state`), a call app that is not part of the system
   and that no app store installed (`other_access`), or a phone or tablet whose processor is an x86 one or
-  runs under a hypervisor (`emulator`, whatever its build values say).
+  runs under a hypervisor (`emulator`, whatever its build values say). Genuine people can show even these;
+  section 7.7 says who, and what to do.
 - **Compare the app with your release** — its files, its code and its size, as section 7.2 describes. A
   modified app is the most direct attack on everything else here: it holds a genuine key.
 - **Compare a phone with itself.** A sudden change between one phone's reports — another signing
@@ -723,6 +724,32 @@ How the common patterns show up:
 Run every new rule silently first: record what it would have done, measure how many genuine customers it
 would have stopped, and only then turn it on, with a review queue for what it holds. Check your rules
 against your outcomes regularly — fraud adapts to them.
+
+### 7.7 Genuine people who show a strong reading
+
+A strong reading is rare on genuine phones, not impossible. Before you refuse on one, know who else shows
+it, and give them a way through that a fraudster cannot take.
+
+| The reading | Genuine people who show it | How to tell | What to do |
+|---|---|---|---|
+| An emulator: `emulator`, `suspected` on `cpu`, `hypervisor` or `abi` | People who use Android apps on a computer through an emulator; developers and testers, and services that rent virtual phones for testing; phones and tablets with Intel processors, sold until about 2016 | `form_factor` names a Chromebook, a PC, a car, a TV or a watch that says what it is, and then the processor does not count. `device` gives the model, the Android version and the security patch, and an Intel phone is an old model on an old Android version. Your testers' installations are yours to know | Decide whether you serve Android on computers at all. If you do, let it read and browse, and ask the person to use a phone for payments, payouts and new payees. If you do not, tell the person that the app needs a phone. Test against a backend of your own that accepts emulators, never against your production one |
+| Another app running yours: `app_host` | People who use an app that clones others, to sign in to a second account | `loaded_from`, `data_folder` and the lists name another app. A phone's own second user, dual-app feature or work profile does not show it. Names in `uid_other_apps` may be your own apps, where they share a user ID | Treat it as unsafe whatever the person intends, since the other app sees and can change everything your app shows and sends. Ask the person to open your app directly, not from inside another app, before anything sensitive. Do not count your own apps in `uid_other_apps` |
+| The debugger thread in a release build: `debug_state`, `jdwp_thread` | Your own debuggable builds; phones whose system is debuggable, such as developer builds of Android, some custom systems and emulators | `debuggable` in `app_identity`, and `ro.debuggable` in `system_properties` | Keep debuggable builds off your production backend. Judge a debuggable system as a reading of its own. In a release build on a system that is not debuggable no genuine case is known, so refuse. Where `ro.debuggable` could not be read, ask for another scan rather than decide |
+| A call app from outside a store: `other_access`, `call_app` | People who chose another call app, from a store other than the ones you expect, or from a website or a computer | `system` and `installer`. A store names itself; a website or a computer names none | List the stores you accept, including phone makers' stores and the open-source ones your customers use. For a call app from none of them, do not refuse the person: Confirm sensitive actions another way than a call, and tell them that calls to your number may not reach you |
+
+- **Refuse the action, not the person.** A strong reading can hold a payment while the person still reads
+  their account.
+- **Tell the person only what to do next,** as section 7.4 says, such as opening the app directly, using a
+  phone, updating the phone's software or contacting support, and never which reading mattered.
+- **Give support a way to look.** Keep each refused scan's SHA-256 with the decision (section 7.5), so that
+  support can see which reading it was and record what they decided.
+- **Clear an installation, not a model.** When support clears a genuine person, clear that installation,
+  and look again if its readings change.
+- **A reading that could not be measured is not one.** Inside another app, commands the SDK starts may
+  fail, and those measurements then say that they could not read, which is neither clean nor proof of
+  anything (section 7.1).
+- **Count before you refuse** (section 7.6): how many of your customers show each reading, and which of
+  them are genuine.
 
 ---
 
