@@ -336,4 +336,53 @@ class ProbeReadsTest {
         assertNull(partial["other_app_code"])
         assertEquals(setOf("other_app_code"), unread(partial)!!.keys)
     }
+
+    private val emulatorCpu = listOf(
+        "processor\t: 0", "vendor_id\t: GenuineIntel", "model name\t: Android virtual processor",
+        "flags\t\t: fpu de pse tsc msr pae sse sse2 ht syscall nx lm hypervisor lahf_lm", "",
+        "processor\t: 1", "vendor_id\t: GenuineIntel", "flags\t\t: fpu de pse hypervisor",
+    )
+    private val kirinCpu = listOf(
+        "Processor\t: AArch64 Processor rev 4 (aarch64)", "processor\t: 0",
+        "Features\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 cpuid", "CPU implementer\t: 0x41",
+        "CPU part\t: 0xd03", "", "processor\t: 4", "CPU implementer\t: 0x41", "CPU part\t: 0xd09",
+        "Hardware\t: vendor Kirin710",
+    )
+
+    @Test fun anEmulatorIsToldByItsProcessorWhateverItsBuildSays() {
+        val avd = ProbeReads.emulatorHardware(Result.success(emulatorCpu), listOf("x86_64"), "x86_64", emptySet())
+        assertEquals(listOf("cpu", "hypervisor", "abi"), avd.reasons)
+        assertEquals("GenuineIntel", avd.fields["cpu_vendor"])
+        assertEquals("Android virtual processor", avd.fields["cpu_model"])
+        assertEquals(true, avd.fields["hypervisor"])
+        assertEquals("phone_or_tablet", avd.fields["form_factor"])
+        // A phone: Arm's cores, no x86 flags to read, no reason.
+        val phone = ProbeReads.emulatorHardware(
+            Result.success(kirinCpu), listOf("arm64-v8a", "armeabi-v7a", "armeabi"), "aarch64", emptySet()
+        )
+        assertEquals(emptyList<String>(), phone.reasons)
+        assertEquals(listOf("0x41"), phone.fields["cpu_implementers"])
+        assertEquals("vendor Kirin710", phone.fields["cpu_model"])
+        assertNull(phone.fields["hypervisor"])
+        assertNull(phone.fields["cpu_vendor"])
+        // An emulator on a Mac: Apple's cores.
+        val mac = ProbeReads.emulatorHardware(
+            Result.success(listOf("CPU implementer\t: 0x61")), listOf("arm64-v8a"), "aarch64", emptySet()
+        )
+        assertEquals(listOf("cpu"), mac.reasons)
+        // Translation that answers aarch64 changes nothing: the processor still says x86.
+        val translated = ProbeReads.emulatorHardware(Result.success(emulatorCpu), emptyList(), "aarch64", emptySet())
+        assertEquals(listOf("cpu", "hypervisor", "abi"), translated.reasons)
+        // A Chromebook has the same hardware and says what it is: no reason, the readings kept.
+        val chromebook = ProbeReads.emulatorHardware(
+            Result.success(emulatorCpu), listOf("x86_64", "x86"), "x86_64", setOf("org.chromium.arc")
+        )
+        assertEquals(emptyList<String>(), chromebook.reasons)
+        assertEquals("chromebook", chromebook.fields["form_factor"])
+        assertEquals("GenuineIntel", chromebook.fields["cpu_vendor"])
+        // An unreadable processor is unread, never a phone's.
+        val unreadable = ProbeReads.emulatorHardware(Result.failure(IOException("denied")), listOf("arm64-v8a"), "aarch64", emptySet())
+        assertEquals(setOf("cpu"), unreadable.unread.keys)
+        assertEquals(emptyList<String>(), unreadable.reasons)
+    }
 }

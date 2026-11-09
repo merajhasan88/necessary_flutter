@@ -72,7 +72,8 @@ class IntegrityProbeManager(
         //     measurements, which carry its fix_time.
         // 11 = volunteers app_host, whether another app runs this one inside
         //      its own; debug_state names the runtime's debugger thread
-        //      (jdwp_thread); other_access names the app that handles calls.
+        //      (jdwp_thread); other_access names the app that handles calls;
+        //      emulator reads the processor and the form of the device.
         private const val COLLECTOR_VERSION = 11
         // Sent with every scan whether or not the server asked: the server
         // tolerates probes beyond its plan but refuses a report missing one it
@@ -833,8 +834,18 @@ class IntegrityProbeManager(
         if (contains(Build.PRODUCT, "sdk") || contains(Build.PRODUCT, "emulator") || contains(Build.PRODUCT, "simulator")) reasons.add("product")
         if (contains(Build.HARDWARE, "goldfish") || contains(Build.HARDWARE, "ranchu")) reasons.add("hardware")
         if (contains(Build.BOARD, "goldfish")) reasons.add("board")
-
-        return ok(
+        // Collector 11: the processor and the form of the device, which an app
+        // that rewrites the build values does not change.
+        val pm = context.packageManager
+        val hardware = ProbeReads.emulatorHardware(
+            runCatching { File("/proc/cpuinfo").readLines() },
+            Build.SUPPORTED_ABIS.toList(),
+            runCatching { android.system.Os.uname().machine }.getOrNull(),
+            ProbeReads.formFactorFeatures.filter { runCatching { pm.hasSystemFeature(it) }.getOrDefault(false) }.toSet()
+        )
+        reasons.addAll(hardware.reasons)
+        val result = linkedMapOf<String, Any>(
+            "status" to "ok",
             "suspected" to reasons.isNotEmpty(),
             "reasons" to reasons,
             "model" to Build.MODEL,
@@ -842,6 +853,9 @@ class IntegrityProbeManager(
             "product" to Build.PRODUCT,
             "hardware" to Build.HARDWARE
         )
+        result.putAll(hardware.fields)
+        if (hardware.unread.isNotEmpty()) result["unread"] = hardware.unread
+        return result
     }
 
     // A setting that could not be read is unread, never "off".

@@ -335,18 +335,32 @@ probe answers `error`.
 ### `emulator`
 
 Build values typical of an Android emulator: the fingerprint, model, manufacturer, product, hardware and
-board names of the common emulators.
+board names of the common emulators. From Android collector 11, also the processor and what the device
+is. Apps that hide an emulator rewrite its build values, not its processor, and no phone running a
+current Android has an x86 processor, runs under a hypervisor, or has Apple's cores (an emulator on a
+Mac). On a phone or tablet these count in `suspected` as `cpu`, `hypervisor` and `abi`. A Chromebook, a
+PC, a car or a TV may run Android apps on such hardware: `form_factor` says which, and then they do not
+count. To check a report that only its processor flagged, read `cpu_model` and the build's `model`: an
+emulator's processor often names itself, for example `Android virtual processor`, and a phone's model
+name on an x86 processor is a contradiction.
 
 **When:** your backend asks for it.
 
 | Field | Type | Needed | Meaning |
 |---|---|---|---|
-| `suspected` | true/false | yes | a build value looked like an emulator's |
-| `reasons` | list |  | which: `fingerprint`, `model`, `manufacturer`, `product`, `hardware`, `board` |
+| `suspected` | true/false | yes | a build value, or on a phone or tablet the hardware, looked like an emulator's |
+| `reasons` | list |  | which: `fingerprint`, `model`, `manufacturer`, `product`, `hardware`, `board`, and `cpu`, `hypervisor`, `abi` |
 | `model` | text |  | the build's model |
 | `manufacturer` | text |  | the build's manufacturer |
 | `product` | text |  | the build's product |
 | `hardware` | text |  | the build's hardware |
+| `form_factor` | one of `phone_or_tablet`, `chromebook`, `pc`, `car`, `tv`, `watch` |  | what the device is, by the features its system declares (Android collector 11) |
+| `cpu_vendor` | text |  | an x86 processor's vendor, for example `GenuineIntel`; left out on ARM |
+| `cpu_implementers` | list |  | the ARM cores' implementers: `0x41` is Arm's designs, `0x61` Apple's |
+| `cpu_model` | text |  | the processor's model, or the chip's name, as `/proc/cpuinfo` gives it |
+| `hypervisor` | true/false |  | an x86 processor runs under a hypervisor; left out on ARM |
+| `abis` | list |  | the ABIs the system offers, for example `arm64-v8a` |
+| `machine` | text |  | the kernel's name for the machine, for example `aarch64` |
 
 ### `device`
 

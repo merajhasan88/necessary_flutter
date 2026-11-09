@@ -140,7 +140,8 @@ const List<MeasurementInfo> androidMeasurements = <MeasurementInfo>[
   MeasurementInfo(
     'emulator',
     'Emulator',
-    'Build values typical of an emulator.',
+    'Build values typical of an emulator, and the processor and the form '
+        'of the device.',
     MeasurementGroup.system,
   ),
   MeasurementInfo(

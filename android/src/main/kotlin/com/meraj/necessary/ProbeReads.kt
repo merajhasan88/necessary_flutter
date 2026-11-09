@@ -445,6 +445,98 @@ object ProbeReads {
         return withUnread(result, unread)
     }
 
+    /** The processor as /proc/cpuinfo names it: an x86 vendor, ARM implementers, a model, a hypervisor. */
+    data class Cpu(val vendor: String?, val implementers: List<String>, val model: String?, val hypervisor: Boolean?)
+
+    /**
+     * x86 names its vendor (vendor_id) and lists its flags, hypervisor among
+     * them under a virtual machine; ARM names each core's implementer, 0x41
+     * for Arm's own designs. The model is x86's "model name" or ARM's
+     * "Hardware". hypervisor is null where there are no x86 flags to read.
+     */
+    fun cpu(lines: List<String>): Cpu {
+        var vendor: String? = null
+        var model: String? = null
+        var hypervisor: Boolean? = null
+        val implementers = sortedSetOf<String>()
+        for (line in lines) {
+            val colon = line.indexOf(':')
+            if (colon < 0) continue
+            val value = line.substring(colon + 1).trim()
+            when (line.substring(0, colon).trim().lowercase(java.util.Locale.US)) {
+                "vendor_id" -> if (vendor == null && value.isNotEmpty()) vendor = value
+                "cpu implementer" -> if (value.isNotEmpty()) implementers.add(value.lowercase(java.util.Locale.US))
+                "model name", "hardware" -> if (model == null && value.isNotEmpty()) model = value
+                "flags" -> hypervisor = (hypervisor == true) || value.split(' ').contains("hypervisor")
+            }
+        }
+        return Cpu(vendor, implementers.toList(), model, hypervisor)
+    }
+
+    /**
+     * What the device is, by the features its system declares: a Chromebook,
+     * a PC, a car or a TV runs Android apps on hardware no phone has, so its
+     * processor is no sign of an emulator.
+     */
+    fun formFactor(features: Set<String>): String = when {
+        "org.chromium.arc" in features || "org.chromium.arc.device_management" in features -> "chromebook"
+        "android.hardware.type.pc" in features -> "pc"
+        "android.hardware.type.automotive" in features -> "car"
+        "android.software.leanback" in features -> "tv"
+        "android.hardware.type.watch" in features -> "watch"
+        else -> "phone_or_tablet"
+    }
+
+    val formFactorFeatures = listOf(
+        "org.chromium.arc", "org.chromium.arc.device_management", "android.hardware.type.pc",
+        "android.hardware.type.automotive", "android.software.leanback", "android.hardware.type.watch",
+    )
+
+    /** The hardware readings of the emulator measurement, and the reasons they give. */
+    data class EmulatorHardware(
+        val fields: Map<String, Any>,
+        val reasons: List<String>,
+        val unread: Map<String, String>,
+    )
+
+    /**
+     * The processor, the ABIs the system offers and the kernel's machine
+     * (collector 11). Apps that hide an emulator rewrite its build values but
+     * not its processor; no phone running a current Android has an x86 one,
+     * runs under a hypervisor, or has Apple's cores (0x61, an emulator on a
+     * Mac). These count as reasons only on a phone or tablet: a Chromebook, a
+     * PC, a car or a TV may have such hardware, and form_factor says which.
+     */
+    fun emulatorHardware(
+        cpuLines: Result<List<String>>,
+        abis: List<String>,
+        machine: String?,
+        features: Set<String>,
+    ): EmulatorHardware {
+        val fields = linkedMapOf<String, Any>()
+        val reasons = mutableListOf<String>()
+        val unread = linkedMapOf<String, String>()
+        val form = formFactor(features)
+        fields["form_factor"] = form
+        fields["abis"] = abis.take(8).map { it.take(32) }
+        machine?.takeIf { it.isNotEmpty() }?.let { fields["machine"] = it.take(32) }
+        val lines = cpuLines.getOrNull()
+        val cpu = if (lines.isNullOrEmpty()) null else cpu(lines)
+        if (cpu == null || (cpu.vendor == null && cpu.implementers.isEmpty())) {
+            unread["cpu"] = cpuLines.exceptionOrNull()?.let { why(it) } ?: "/proc/cpuinfo names no processor"
+        }
+        cpu?.vendor?.let { fields["cpu_vendor"] = it.take(64) }
+        cpu?.implementers?.takeIf { it.isNotEmpty() }?.let { found -> fields["cpu_implementers"] = found.take(8).map { it.take(8) } }
+        cpu?.model?.let { fields["cpu_model"] = it.take(128) }
+        cpu?.hypervisor?.let { fields["hypervisor"] = it }
+        if (form == "phone_or_tablet") {
+            if (cpu != null && (cpu.vendor != null || "0x61" in cpu.implementers)) reasons.add("cpu")
+            if (cpu?.hypervisor == true) reasons.add("hypervisor")
+            if (abis.isEmpty() || abis.any { it.startsWith("x86") }) reasons.add("abi")
+        }
+        return EmulatorHardware(fields, reasons, unread)
+    }
+
     /**
      * Why a read failed, for `unread` and a probe's `error`: the failure and
      * every cause beneath it (Causes), within the contract's 160 characters.

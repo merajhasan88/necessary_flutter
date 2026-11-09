@@ -5,6 +5,10 @@
   other apps' code is in its memory. `doc/measurements.md` says how to read it.
 - Android: `debug_state` says whether the runtime's debugger thread runs in your app (`jdwp_thread`).
 - Android: `other_access` names the app that handles calls (`call_app`).
+- Android: `emulator` also reads the processor and what the device is (`form_factor`, `cpu_vendor`,
+  `cpu_implementers`, `cpu_model`, `hypervisor`, `abis`, `machine`). On a phone or tablet, an x86
+  processor, a hypervisor or Apple's cores count as reasons (`cpu`, `hypervisor`, `abi`), whatever the
+  build values say; on a Chromebook, a PC, a car, a TV or a watch they do not.
 - The Android collector is version 11.
 
 ## 0.1.8

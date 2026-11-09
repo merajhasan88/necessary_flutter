@@ -1100,8 +1100,52 @@
         "suspected": {
           "type": "boolean"
         },
+        "cpu_vendor": {
+          "type": "string"
+        },
+        "cpu_implementers": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8
+          },
+          "description": "the ARM cores' implementers, as /proc/cpuinfo gives them: 0x41 Arm, 0x61 Apple"
+        },
+        "cpu_model": {
+          "type": "string"
+        },
+        "hypervisor": {
+          "type": "boolean",
+          "description": "an x86 processor's hypervisor flag; left out on ARM"
+        },
+        "abis": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "description": "the ABIs the system offers, as Build.SUPPORTED_ABIS lists them"
+        },
+        "machine": {
+          "type": "string"
+        },
+        "form_factor": {
+          "enum": [
+            "phone_or_tablet",
+            "chromebook",
+            "pc",
+            "car",
+            "tv",
+            "watch"
+          ],
+          "description": "what the device is, by the features its system declares"
+        },
         "reasons": {
-          "description": "the build values that looked like an emulator"
+          "description": "the build values that looked like an emulator, and on a phone or tablet the hardware: cpu, hypervisor, abi"
         },
         "model": {
           "description": "the build's model"
@@ -1117,7 +1161,7 @@
         }
       },
       "additionalProperties": true,
-      "description": "build values typical of an emulator",
+      "description": "build values typical of an emulator, and the processor and the form of the device",
       "x-answered": "when the backend requests it",
       "x-complete-when-ok": [
         "suspected"

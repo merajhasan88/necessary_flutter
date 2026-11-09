@@ -543,7 +543,7 @@ or keep their scans apart as older evidence.
 | `exec_mappings` | memory both writable and executable, executable memory from deleted files, unlabelled executable regions | `wx_mappings`, `wx_bytes`, `wx_size_classes`, `wx_smallest_bytes`, `wx_largest_bytes`, `deleted_exec_mappings`, `deleted_exec_own_code`, `deleted_exec_jit`, `anon_exec_labeled`, `anon_exec_unlabeled`, `anon_exec_unlabeled_bytes`, `maps_lines`, `samples` |
 | `code_integrity` | the app's native code and system libraries in memory compared with their files — an inline hook changes bytes | `checked`, `diff_bytes`, and for each region — the core system libraries, the extended ones, the app's own — its bytes compared, differing, expected, skipped and unreadable, and whether it is complete (`core_compared_bytes` to `app_complete`); `ext_libs_diff`, `app_libs_diff`, `diffed_libs`, `protect_restore_failures`, `elapsed_ms` |
 | `developer_settings` | developer options and USB debugging | `developer_options_enabled`, `adb_enabled` |
-| `emulator` | build values typical of an emulator | `suspected`, `reasons`, `model`, `manufacturer`, `product`, `hardware` |
+| `emulator` | build values typical of an emulator, and the processor and the form of the device | `suspected`, `reasons`, `model`, `manufacturer`, `product`, `hardware`, `form_factor`, `cpu_vendor`, `cpu_implementers`, `cpu_model`, `hypervisor`, `abis`, `machine` |
 | `device` | the OS version, the security patch level, model, build, the app's ABI, memory page size | `release`, `sdk_int`, `security_patch`, `manufacturer`, `brand`, `model`, `device`, `build_id`, `fingerprint`, `abi`, `page_size` |
 | `network` | a VPN up on any network; an HTTP proxy set | `vpn_active`, `http_proxy_configured`, `transports`, `interfaces` (names only) |
 | `app_host` | whether Android runs the app itself, or another app runs it inside its own | `loaded_from`, `data_folder`, `uid_matches`, `other_app_code`, `truncated` |
@@ -590,8 +590,9 @@ what your own server observed, where the requests come from, and what happened a
   options, USB debugging and a VPN are common on honest phones; an instrumentation framework in memory, a
   debugger attached, code changed in memory, or an app that is not your own signed build are not. Nor,
   on Android, are another app running yours (`app_host`), the runtime's debugger thread in a release
-  build on a phone that is not debuggable (`debug_state`), or a call app that is not part of the system
-  and that no app store installed (`other_access`).
+  build on a phone that is not debuggable (`debug_state`), a call app that is not part of the system
+  and that no app store installed (`other_access`), or a phone or tablet whose processor is an x86 one or
+  runs under a hypervisor (`emulator`, whatever its build values say).
 - **Compare the app with your release** — its files, its code and its size, as section 7.2 describes. A
   modified app is the most direct attack on everything else here: it holds a genuine key.
 - **Compare a phone with itself.** A sudden change between one phone's reports — another signing
