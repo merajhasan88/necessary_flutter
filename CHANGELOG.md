@@ -6,6 +6,8 @@
   says how to read it.
 - Android: `debug_state` says whether the runtime's debugger thread runs in your app (`jdwp_thread`).
 - Android: `other_access` names the app that handles calls (`call_app`).
+- Android: a command that exits with an error is not a reading: `root_shell` and `system_properties` say
+  why they could not read, rather than taking what the command printed as the answer.
 - Android: `emulator` also reads the processor and what the device is (`form_factor`, `cpu_vendor`,
   `cpu_implementers`, `cpu_model`, `hypervisor`, `abis`, `machine`). On a phone or tablet, an x86
   processor, a hypervisor or Apple's cores count as reasons (`cpu`, `hypervisor`, `abi`), whatever the

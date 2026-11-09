@@ -21,6 +21,11 @@ class ProbeReadsTest {
     private val notStarted = CommandResult(false, false, null, "", "IOException")
     private val timedOut = CommandResult(true, false, null, "")
     private val unreadOutput = CommandResult(true, false, 0, "", "output: IOException")
+    // A command the linker could not start: it exits 1 and says why on the merged error stream.
+    private val notLinked = CommandResult(
+        true, true, 1,
+        "CANNOT LINK EXECUTABLE \"/system/bin/sh\": library \"/data/app/com.example.host-a==/lib/arm64/libhook.so\" not found\n"
+    )
 
     private fun isError(result: Map<String, Any>) = result["status"] == "error"
 
@@ -75,6 +80,11 @@ class ProbeReadsTest {
         assertTrue(isError(ProbeReads.rootShell(unreadOutput)))
         assertEquals(false, ProbeReads.rootShell(ran)["su_found"])
         assertEquals(true, ProbeReads.rootShell(ran.copy(output = "/system/xbin/su\n"))["su_found"])
+        // A shell that did not run found nothing: its complaint is no path to su.
+        val failed = ProbeReads.rootShell(notLinked)
+        assertTrue(isError(failed))
+        assertTrue((failed["error"] as String).startsWith("su lookup exited with 1: CANNOT LINK EXECUTABLE"))
+        assertTrue(isError(ProbeReads.rootShell(ran.copy(exitCode = 127))))
     }
 
     @Test fun aPropertyNotReadIsUnreadNotEmpty() {
@@ -86,6 +96,14 @@ class ProbeReadsTest {
         assertEquals(mapOf("ro.secure" to "1"), values)
         assertTrue(unread(some)!!.containsKey("ro.debuggable"))
         assertTrue(isError(ProbeReads.systemProperties(mapOf("ro.secure" to timedOut))))
+        // getprop that did not run gave no value, whatever it printed.
+        val linker = ProbeReads.systemProperties(
+            linkedMapOf("ro.secure" to ran.copy(output = "1\n"), "ro.boot.verifiedbootstate" to notLinked)
+        )
+        @Suppress("UNCHECKED_CAST")
+        assertEquals(mapOf("ro.secure" to "1"), linker["properties"] as Map<String, String>)
+        assertTrue(unread(linker)!!.getValue("ro.boot.verifiedbootstate").startsWith("getprop exited with 1: CANNOT LINK"))
+        assertTrue(isError(ProbeReads.systemProperties(mapOf("ro.boot.verifiedbootstate" to notLinked))))
     }
 
     @Test fun aRootPathThatThrewIsUnreadNotAbsent() {

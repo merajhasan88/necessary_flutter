@@ -25,6 +25,11 @@ object ProbeReads {
             get() = when {
                 !started -> "could not start" + (failure?.let { ": $it" } ?: "")
                 !finished -> "did not finish in time"
+                // Every command run here exits 0 when it ran, so another exit is a
+                // command that did not run as asked -- one the system's linker
+                // could not start, say -- and what it printed is why, not an answer.
+                exitCode != null && exitCode != 0 -> "exited with $exitCode" +
+                    (output.trim().lineSequence().firstOrNull()?.takeIf { it.isNotEmpty() }?.let { ": $it" } ?: "")
                 else -> null
             }
     }
