@@ -13,6 +13,11 @@
   them afresh. Counts only: no position, no screen and no text, and nothing is counted while the
   measurement is off. `doc/measurements.md` says how to read them, and the integration guide's section
   7.7 who shows them genuinely.
+- `doc/measurements.md` and the integration guide say what both readings showed on phones: a service's
+  taps and clicks counted on Android 10 and Android 16, a finger's touches and a keyboard's presses not;
+  a TestFlight build's code stored encrypted on iOS 27 and an app installed outside the App Store in the
+  clear on iOS 15.8. The guide also says that a build from the App Store or TestFlight never compares its
+  main executable, so `app_complete` is false there on every phone.
 - The iOS collector is version 9; the Android collector is version 12.
 
 ## 0.1.9

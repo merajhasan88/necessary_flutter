@@ -181,6 +181,9 @@ and `body_sha256` (the SHA-256 of its exact body).
   request — same method, path, query and body — under the same account session, within a couple of
   minutes, and your decision on that report allowed the request; and mark the report used in the same
   transaction, so that it approves one request, once.
+- **Ask for `accessibility` in such a scan** where your app enables it, on Android: its counts run up to
+  the scan, and a click an Accessibility service performs on the button that starts the scan is counted
+  in that same scan, as measured on Android 10 and Android 16.
 
 ---
 
@@ -628,6 +631,8 @@ normal looks like.
      (`team_identifier`, in `code_signing`); and, for an app you ship through the App Store or TestFlight,
      whether its code is stored encrypted (`executable_encrypted`), as Apple stores what it delivers. A
      copy decrypted and installed some other way is not the one Apple delivered, whatever else it keeps.
+     As measured: a build installed through TestFlight read true on an iPhone with iOS 27, and a build
+     installed outside the App Store false on an iPhone with iOS 15.8.
 
    A report whose files match no release of yours is not your app as you built it.
 2. **The code in memory** (`code_integrity`). The plugin compares the app's code as it runs with the
@@ -636,7 +641,10 @@ normal looks like.
    what was loaded: on iOS `app_images_expected` counts the app's own images in memory and
    `app_expected_bytes` their code — an injected library is one image more and its code more than your
    release ever loads; on Android `app_expected_bytes` is the app's own native code in memory. Compare
-   both with your release's record. A comparison short of complete measured only part of the code.
+   both with your release's record. A comparison short of complete measured only part of the code. On
+   iOS, a build from the App Store or TestFlight is one: its main executable is encrypted on disk, so it is
+   left out and named in `app_images_not_compared`, and `app_complete` is false on every phone, as your
+   release's record shows.
 3. **The memory around it** (`exec_mappings`, on Android). Code loaded at run time needs executable
    memory: memory both writable and executable (`wx_bytes`, `wx_size_classes`, `wx_largest_bytes`) and
    executable regions with no file behind them (`anon_exec_unlabeled_bytes`). Some runtimes compile
@@ -743,6 +751,10 @@ it, and give them a way through that a fraudster cannot take.
 | Taps and clicks a service made: `accessibility`, `touches_injected` or `clicks_without_touch` above 0 | Users of a screen reader, voice control or switch control, which tap and click for them; users of apps that automate taps; before Android 12, testers who send taps through adb | `services`, with `tool_services`, `gesture_services`, `system` and `installer`. A tool for users with disabilities declares itself one, and Google Play allows that only for genuine tools; an app installed from elsewhere can declare it falsely. The counts cover `counted_seconds` | When every service that is on is a declared tool from a store you accept, do not refuse: Confirm sensitive actions with the step-up approval and a biometric (section 3), which no service can give for the user. When a service that is not, or that no store installed, can perform gestures and the counts are above 0, someone else may be using the app: Refuse what matters. A service that is on, with counts of 0, pressed nothing |
 | An iOS app's code in the clear: `app_identity`, `executable_encrypted` false | Users of your own development, ad hoc or enterprise builds, such as your testers, which Apple never encrypts | `code_signing` names your team; your distribution says which builds went through the App Store or TestFlight | Read it only for an app you ship through the App Store or TestFlight. There, the code in the clear is a copy that is not the one Apple delivered: Refuse what matters. Test your other builds against a backend of your own |
 
+- **What the touch counts showed on phones** (Android 10 and Android 16, a service that taps and clicks
+  switched on): its taps counted in `touches_injected` and its clicks in `clicks_without_touch`; a
+  finger's touches and a button pressed from a keyboard counted in neither. Before Android 12, taps sent
+  through adb counted as a service's too.
 - **Refuse the action, not the user.** A strong reading can hold a payment while the user still reads
   their account.
 - **Tell the user only what to do next,** as section 7.4 says, such as opening the app directly, using a

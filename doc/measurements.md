@@ -487,6 +487,15 @@ The counts are left out when the SDK watched no screen of your app's since the l
 them, as in a scan made before the app showed one; `clicks_without_touch` alone is left out when the SDK
 could not watch the clicks. The counts are your app's screen's: a touch in another app is not seen.
 
+**As measured**, on Android 10 and Android 16 with a service switched on that can perform gestures and
+read the screen: each tap the service made counted in `touches_injected`, and each click it performed in
+`clicks_without_touch`, also when the click pressed the button that started the scan, which then carried
+it. A finger's touch counted in `touches` only, and a button pressed from a keyboard, which makes a click
+with no touch, counted in neither. On Android 10 taps sent through adb counted in `touches_injected`, as
+the table says; on Android 16 they did not. Android 12 to 15 also mark a finger's touches as a service's
+while a service that can perform gestures is on, which is why a touch counts as a service's only when no
+finger, stylus or mouse is behind it.
+
 ### `notification_access`
 
 Every app allowed to read the phone's notifications — one-time codes among them.
@@ -586,6 +595,11 @@ and the phone keeps it encrypted; a copy taken from a phone, decrypted and insta
 keeps it in the clear. So for an app you ship only through the App Store or TestFlight,
 `executable_encrypted` false means the app is not the copy Apple delivered. Your own development, ad hoc
 and enterprise builds are in the clear too: Read it only against the way you distribute.
+
+**As measured:** a build installed through TestFlight read `true` on an iPhone with iOS 27, and a build
+installed outside the App Store read `false` on an iPhone with iOS 15.8. On the TestFlight build
+`code_integrity` left the main executable out, as Apple keeps it encrypted on disk, so `app_complete` was
+false there; on the other build it compared every image of the app.
 
 **When:** your backend asks for it.
 
