@@ -1,5 +1,17 @@
-# Codemagic: an unsigned iOS build of the example app, for a phone that
-# installs unsigned builds (or for you to sign).
+# Codemagic: two iOS builds of the example app.
+#
+# example-ios-unsigned: an unsigned build, for a phone that installs unsigned
+# builds (or for you to sign).
+#
+# example-ios-testflight: a build signed for the App Store and uploaded to App
+# Store Connect for TestFlight's internal testers only, so it never goes to
+# review. Apple encrypts it as it encrypts an App Store build, which is what
+# app_identity's executable_encrypted reads. It needs, in Codemagic, an App
+# Store Connect API key named necessary_asc (Team settings, Developer Portal)
+# and a distribution certificate and App Store profile for the example's
+# bundle identifier (Code signing identities); in App Store Connect, an app
+# record for that identifier; and APP_STORE_APPLE_ID, that record's Apple ID,
+# in the group necessary_example.
 #
 # The backends the example offers come from Codemagic, never from this file:
 # in this app's settings, add the environment variable group necessary_example
@@ -51,3 +63,56 @@ workflows:
 
     artifacts:
       - necessary-example-unsigned.ipa
+
+  example-ios-testflight:
+    name: iOS TestFlight build of the example app (internal testers only)
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    integrations:
+      app_store_connect: necessary_asc
+
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      groups:
+        - necessary_example
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.meraj.necessary.necessaryExample
+
+    scripts:
+      - name: Fetch packages
+        script: |
+          cd example && flutter pub get
+
+      - name: Sign for the App Store, for internal testers only
+        script: |
+          xcode-project use-profiles --project example/ios/Runner.xcodeproj \
+            --custom-export-options='{"testFlightInternalTestingOnly": true}'
+
+      - name: Build the signed .ipa
+        script: |
+          set -e
+          if [ -n "${NECESSARY_BACKENDS:-}" ]; then
+            define="NECESSARY_BACKENDS=$NECESSARY_BACKENDS"
+          elif [ -n "${NECESSARY_BACKEND_URL:-}" ]; then
+            define="NECESSARY_BACKEND_URL=$NECESSARY_BACKEND_URL"
+          else
+            echo "Set NECESSARY_BACKENDS or NECESSARY_BACKEND_URL in the group necessary_example."
+            exit 1
+          fi
+          test -n "${APP_STORE_APPLE_ID:-}" || { echo "Set APP_STORE_APPLE_ID in the group necessary_example."; exit 1; }
+          latest=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || true)
+          build=$(( ${latest:-0} + 1 ))
+          cd example
+          flutter build ipa --release --build-number="$build" \
+            --export-options-plist=/Users/builder/export_options.plist --dart-define="$define"
+
+    artifacts:
+      - example/build/ios/ipa/*.ipa
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: false

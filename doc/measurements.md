@@ -561,7 +561,12 @@ iOS cannot measure them.
 
 The installed app: its bundle identifier and version, and the SHA-256 and size of its main executable.
 An executable with code added is larger, and one changed byte changes the hash: compare these with each
-release of yours (integration guide, section 7.2).
+release of yours (integration guide, section 7.2). From iOS collector 9, also whether the main executable
+is stored encrypted. Apple encrypts the code of an app it distributes through the App Store or TestFlight,
+and the phone keeps it encrypted; a copy taken from a phone, decrypted and installed again some other way
+keeps it in the clear. So for an app you ship only through the App Store or TestFlight,
+`executable_encrypted` false means the app is not the copy Apple delivered. Your own development, ad hoc
+and enterprise builds are in the clear too: Read it only against the way you distribute.
 
 **When:** your backend asks for it.
 
@@ -572,6 +577,7 @@ release of yours (integration guide, section 7.2).
 | `version_name` | text |  | the app's version (`CFBundleShortVersionString`) |
 | `version_code` | text |  | the app's build number (`CFBundleVersion`) |
 | `executable_bytes` | integer, bytes |  | the main executable's size |
+| `executable_encrypted` | true/false |  | the main executable is stored encrypted, as Apple stores an app it distributes through the App Store or TestFlight (iOS collector 9) |
 
 ### `code_signing`
 

@@ -90,6 +90,39 @@ enum ProbeReads {
             textSize: span.textSize)
     }
 
+    /// Whether the main executable's code is stored encrypted, as Apple stores
+    /// an app it distributes through the App Store or TestFlight (iOS collector
+    /// 9). `bytes` are the image's Mach-O header and load commands as loaded:
+    /// the loader decrypts the code's pages, never the LC_ENCRYPTION_INFO_64
+    /// command, so its `cryptid` is the stored file's. A copy taken from a phone
+    /// and decrypted keeps the command with `cryptid` 0; a build Apple did not
+    /// distribute has 0 or no such command. nil when the bytes are not a 64-bit
+    /// Mach-O header with every command inside them: not read, never a clean
+    /// answer.
+    static func executableEncrypted(machHeader bytes: [UInt8]) -> Bool? {
+        func word(_ at: Int) -> UInt32? {
+            guard at >= 0, at + 4 <= bytes.count else { return nil }
+            return UInt32(bytes[at]) | UInt32(bytes[at + 1]) << 8
+                | UInt32(bytes[at + 2]) << 16 | UInt32(bytes[at + 3]) << 24
+        }
+        let headerSize = 32  // mach_header_64
+        guard word(0) == 0xfeed_facf, let count = word(16), let commandBytes = word(20),
+              headerSize + Int(commandBytes) <= bytes.count else { return nil }
+        let end = headerSize + Int(commandBytes)
+        var cursor = headerSize
+        var encrypted = false
+        for _ in 0..<count {
+            guard let command = word(cursor), let size = word(cursor + 4), size >= 8,
+                  cursor + Int(size) <= end else { return nil }
+            if command == 0x2C {  // LC_ENCRYPTION_INFO_64: cmd, cmdsize, cryptoff, cryptsize, cryptid
+                guard size >= 20, let cryptID = word(cursor + 16) else { return nil }
+                encrypted = encrypted || cryptID != 0
+            }
+            cursor += Int(size)
+        }
+        return encrypted
+    }
+
     /// Why a read of `wanted` bytes is not the whole of them, or nil: a short
     /// read is unreadable, never a comparison of part.
     static func readProblem(got: Int, wanted: Int) -> String? {

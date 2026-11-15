@@ -552,7 +552,7 @@ or keep their scans apart as older evidence.
 
 | Probe | What it tells you | Fields |
 |---|---|---|
-| `app_identity` | the installed app and its executable's hash | `bundle_id`, `executable_sha256`, `version_name`, `version_code`, `executable_bytes` |
+| `app_identity` | the installed app, its executable's hash, and whether Apple stores its code encrypted | `bundle_id`, `executable_sha256`, `version_name`, `version_code`, `executable_bytes`, `executable_encrypted` |
 | `code_signing` | the executable's own code signature | `signing_identifier`, `team_identifier`, `get_task_allow`, `signed`, `signature_absent`, `signature_parse_error`, `code_directory_flags`, `entitlement_count` |
 | `debugger` | a debugger tracing the process | `traced` |
 | `jailbreak_files` | known jailbreak paths that exist | `found_paths`, `checked_count` |
@@ -592,8 +592,9 @@ what your own server observed, where the requests come from, and what happened a
   on Android, are another app running yours (`app_host`), the runtime's debugger thread in a release
   build on a phone that is not debuggable (`debug_state`), a call app that is not part of the system
   and that no app store installed (`other_access`), or a phone or tablet whose processor is an x86 one or
-  runs under a hypervisor (`emulator`, whatever its build values say). Genuine users can show even these;
-  section 7.7 says who, and what to do.
+  runs under a hypervisor (`emulator`, whatever its build values say); nor, on iOS, is the code of an app
+  you ship through the App Store or TestFlight stored in the clear (`app_identity`). Genuine users can show
+  even these; section 7.7 says who, and what to do.
 - **Compare the app with your release** — its files, its code and its size, as section 7.2 describes. A
   modified app is the most direct attack on everything else here: it holds a genuine key.
 - **Compare a phone with itself.** A sudden change between one phone's reports — another signing
@@ -622,8 +623,10 @@ normal looks like.
      APK you ship and its hash (`split_apks`); and, where you distribute through a store, that store as
      `installer_package`.
    - iOS: the main executable's SHA-256 and its **size in bytes** (`executable_sha256`,
-     `executable_bytes`) — an executable with code added is larger; and your team identifier
-     (`team_identifier`, in `code_signing`).
+     `executable_bytes`) — an executable with code added is larger; your team identifier
+     (`team_identifier`, in `code_signing`); and, for an app you ship through the App Store or TestFlight,
+     whether its code is stored encrypted (`executable_encrypted`), as Apple stores what it delivers. A
+     copy decrypted and installed some other way is not the one Apple delivered, whatever else it keeps.
 
    A report whose files match no release of yours is not your app as you built it.
 2. **The code in memory** (`code_integrity`). The plugin compares the app's code as it runs with the
@@ -736,6 +739,7 @@ it, and give them a way through that a fraudster cannot take.
 | Another app running yours: `app_host` | Users of an app that clones others, to sign in to a second account | `loaded_from`, `data_folder` and the lists name another app. A phone's own second user, dual-app feature or work profile does not show it. Names in `uid_other_apps` may be your own apps, where they share a user ID | Treat it as unsafe whatever the user intends, since the other app sees and can change everything your app shows and sends. Ask the user to open your app directly, not from inside another app, before anything sensitive. Do not count your own apps in `uid_other_apps` |
 | The debugger thread in a release build: `debug_state`, `jdwp_thread` | Your own debuggable builds; phones whose system is debuggable, such as developer builds of Android, some custom systems and emulators | `debuggable` in `app_identity`, and `ro.debuggable` in `system_properties` | Keep debuggable builds off your production backend. Judge a debuggable system as a reading of its own. In a release build on a system that is not debuggable no genuine case is known, so refuse. Where `ro.debuggable` could not be read, ask for another scan rather than decide |
 | A call app from outside a store: `other_access`, `call_app` | Users who chose another call app, from a store other than the ones you expect, or from a website or a computer | `system` and `installer`. A store names itself; a website or a computer names none | List the stores you accept, including phone makers' stores and the open-source ones your customers use. For a call app from none of them, do not refuse the user: Confirm sensitive actions another way than a call, and tell them that calls to your number may not reach you |
+| An iOS app's code in the clear: `app_identity`, `executable_encrypted` false | Users of your own development, ad hoc or enterprise builds, such as your testers, which Apple never encrypts | `code_signing` names your team; your distribution says which builds went through the App Store or TestFlight | Read it only for an app you ship through the App Store or TestFlight. There, the code in the clear is a copy that is not the one Apple delivered: Refuse what matters. Test your other builds against a backend of your own |
 
 - **Refuse the action, not the user.** A strong reading can hold a payment while the user still reads
   their account.

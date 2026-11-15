@@ -1,3 +1,11 @@
+## 0.1.10
+
+- iOS: `app_identity` says whether the app's main executable is stored encrypted (`executable_encrypted`),
+  as Apple stores an app it distributes through the App Store or TestFlight. A copy decrypted and installed
+  some other way, and a development, ad hoc or enterprise build, keeps it in the clear.
+  `doc/measurements.md` says how to read it.
+- The iOS collector is version 9.
+
 ## 0.1.9
 
 - Android: every scan carries `app_host`, whether another app runs yours inside its own: where Android says

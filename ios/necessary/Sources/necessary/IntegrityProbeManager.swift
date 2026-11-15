@@ -29,11 +29,13 @@ final class IntegrityProbeManager {
     /// its fix_time. 6 sends the memory page size with `device`, and asks
     /// screen capture of the screen showing the app: with no window scene in
     /// the foreground, recording is not measured and `recording_status` says
-    /// `unavailable`, as on Android.
+    /// `unavailable`, as on Android. 9 says in `app_identity` whether the main
+    /// executable is stored encrypted, as Apple stores an app it distributes
+    /// (`executable_encrypted`).
     /// What the reads mean - the coverage tally, the text span's checks, the
     /// one location read - is in ProbeReads.swift, which needs no Apple-only
     /// framework and so can be tested on any Swift toolchain.
-    private static let collectorVersion = 8
+    private static let collectorVersion = 9
     /// Sent with every scan whether or not the server asked, like
     /// code_integrity below, so no older client breaks.
     private static let volunteeredProbes = ["device", "network"]
@@ -337,7 +339,54 @@ final class IntegrityProbeManager {
         } else {
             result["executable_sha256"] = ""
         }
+        // Whether Apple stores the app's code encrypted (collector 9): from the
+        // main executable's load commands as loaded, which keep the file's
+        // LC_ENCRYPTION_INFO_64. Not read is unread, never false.
+        switch mainExecutableHeader() {
+        case .success(let bytes):
+            if let encrypted = ProbeReads.executableEncrypted(machHeader: bytes) {
+                result["executable_encrypted"] = encrypted
+            } else {
+                result["unread"] = ["executable_encrypted": "its load commands are not a 64-bit Mach-O header's"]
+            }
+        case .failure(let problem):
+            result["unread"] = ["executable_encrypted": problem.why]
+        }
         return result
+    }
+
+    struct HeaderProblem: Error { let why: String }
+
+    /// The main executable's Mach-O header and load commands as loaded, found
+    /// by its name in the bundle, as code_integrity finds it. An image dyld
+    /// names no path for is counted, so a main executable not found among the
+    /// named ones says so rather than reading as absent.
+    private func mainExecutableHeader() -> Result<[UInt8], HeaderProblem> {
+        let bundlePath = Bundle.main.bundlePath
+        guard let mainName = Bundle.main.executableURL?.lastPathComponent else {
+            return .failure(HeaderProblem(why: "the bundle names no executable"))
+        }
+        var unnamed = 0
+        for index in 0..<_dyld_image_count() {
+            guard let namePointer = _dyld_get_image_name(index) else {
+                unnamed += 1
+                continue
+            }
+            let path = String(cString: namePointer)
+            guard path.hasPrefix(bundlePath),
+                  ProbeReads.bundleLabel(imagePath: path, bundlePath: bundlePath) == mainName else { continue }
+            guard let header = _dyld_get_image_header(index) else {
+                return .failure(HeaderProblem(why: "dyld gave no header for the main executable"))
+            }
+            let raw = UnsafeRawPointer(header)
+            let header64 = raw.assumingMemoryBound(to: mach_header_64.self)
+            guard header64.pointee.magic == 0xfeed_facf else { return .success([]) }
+            let count = MemoryLayout<mach_header_64>.size + Int(header64.pointee.sizeofcmds)
+            return .success(Array(UnsafeRawBufferPointer(start: raw, count: count)))
+        }
+        return .failure(HeaderProblem(why: unnamed > 0
+            ? "not among the images dyld named; it gave no name for \(unnamed)"
+            : "the main executable is not among the loaded images"))
     }
 
     /// Reports this app's own code-signing identity by parsing the Mach-O

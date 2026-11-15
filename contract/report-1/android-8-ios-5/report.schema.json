@@ -1913,6 +1913,10 @@
         "executable_sha256": {
           "type": "string"
         },
+        "executable_encrypted": {
+          "type": "boolean",
+          "description": "the main executable is stored encrypted, as Apple stores an app it distributes through the App Store or TestFlight"
+        },
         "version_name": {
           "description": "the app's version"
         },
