@@ -48,6 +48,22 @@ class NativeIntegrityCollector {
     }
   }
 
+  /// Starts or stops counting how the app's screen is touched, for the
+  /// accessibility measurement (Android collector 12): [DeviceTrust.start]
+  /// starts it while the app enables that measurement, so that the counts run
+  /// from then, not from the first scan; every scan does the same with what
+  /// the app enables at the time. Stopped, what was counted is dropped.
+  Future<void> watchTouches({required bool on}) async {
+    try {
+      await _channel.invokeMethod<void>('watchTouches', <String, dynamic>{
+        'on': on,
+      });
+    } on MissingPluginException {
+      // iOS counts nothing: no other app runs an Accessibility service on an
+      // iPhone, and its collector sends no accessibility measurement.
+    }
+  }
+
   /// Asks the person for the OS location permission and
   /// returns what the app now holds: precise, approximate or none. Only the
   /// app asks, from its own screen; a scan never prompts.

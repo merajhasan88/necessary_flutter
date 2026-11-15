@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.WindowManager
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -48,6 +49,11 @@ class NecessaryPlugin :
     private lateinit var stepUpKeys: StepUpKeyManager
     private var activityBinding: ActivityPluginBinding? = null
     private val screenGuard = ScreenGuard()
+    // How the app's screen is touched, for the accessibility measurement:
+    // watched only while the app enables that measurement.
+    private val touchCounts = TouchCounts(Build.VERSION.SDK_INT, SystemClock::elapsedRealtime)
+    private var touchesWanted = false
+    private var touchWatch: TouchWatch? = null
     // The app's own request for the location permission, answered when the
     // person chooses; the collector itself never asks.
     private var pendingLocationResult: MethodChannel.Result? = null
@@ -56,7 +62,7 @@ class NecessaryPlugin :
         context = binding.applicationContext
         worker = Executors.newSingleThreadExecutor()
         installationKeys = InstallationKeyManager(context)
-        integrityProbes = IntegrityProbeManager(context) { activityBinding?.activity }
+        integrityProbes = IntegrityProbeManager(context, touchCounts) { activityBinding?.activity }
         stepUpKeys = StepUpKeyManager(context)
         val messenger = binding.binaryMessenger
         channels = listOf(
@@ -80,6 +86,7 @@ class NecessaryPlugin :
         binding.addRequestPermissionsResultListener(this)
         // A window recreated while the screen is protected is protected too.
         screenGuard.reattach(windowState(binding.activity))?.let { applyScreen(binding.activity, it) }
+        if (touchesWanted) watchActivity(binding.activity)
     }
 
     // A recreated activity still receives the confirm-credential result, so a
@@ -103,6 +110,8 @@ class NecessaryPlugin :
     }
 
     private fun detachFromActivity() {
+        touchWatch?.detach()
+        touchWatch = null
         activityBinding?.removeActivityResultListener(this)
         activityBinding?.removeRequestPermissionsResultListener(this)
         activityBinding = null
@@ -142,18 +151,17 @@ class NecessaryPlugin :
 
     private fun onIntegrityCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
-            "collect" -> runOffMainThread(result) {
-                val nonce = requiredString(call, "challenge_nonce")
-                val required = call.argument<List<String>>("required_probes")
-                    ?: throw InstallationKeyFailure(
-                        "INVALID_ARGUMENT",
-                        "required_probes must be a list of strings.",
-                    )
-                // Absent from an older Dart client: then nothing optional is
-                // collected.
-                val optional = call.argument<List<String>>("optional_probes") ?: emptyList()
-                val enabled = call.argument<List<String>>("enabled_measurements")?.toSet() ?: emptySet()
-                integrityProbes.collect(required, nonce, optional, enabled)
+            "collect" -> {
+                // On the main thread, before the scan: the touches are watched
+                // while the app enables the accessibility measurement.
+                watchTouches(call.argument<List<String>>("enabled_measurements")?.contains("accessibility") == true)
+                collect(call, result)
+            }
+            // From start(), so that an app that enables the measurement counts
+            // from then, not from its first scan.
+            "watchTouches" -> {
+                watchTouches(call.argument<Boolean>("on") == true)
+                result.success(null)
             }
             // For the location and mock_location measurements: asks the person
             // once, from a button on the app's own screen.
@@ -161,6 +169,42 @@ class NecessaryPlugin :
             else -> result.notImplemented()
         }
     }
+
+    /**
+     * Starts or stops watching how the app's screen is touched (TouchCounts). Stopped, what was
+     * counted is dropped: it is sent only while the app enables the measurement.
+     */
+    private fun watchTouches(on: Boolean) {
+        if (on == touchesWanted) return
+        touchesWanted = on
+        if (on) {
+            activityBinding?.activity?.let(::watchActivity)
+        } else {
+            touchWatch?.detach()
+            touchWatch = null
+            touchCounts.discard()
+        }
+    }
+
+    private fun watchActivity(activity: Activity) {
+        touchWatch?.detach()
+        touchWatch = TouchWatch.attach(activity, touchCounts)
+    }
+
+    private fun collect(call: MethodCall, result: MethodChannel.Result) =
+        runOffMainThread(result) {
+            val nonce = requiredString(call, "challenge_nonce")
+            val required = call.argument<List<String>>("required_probes")
+                ?: throw InstallationKeyFailure(
+                    "INVALID_ARGUMENT",
+                    "required_probes must be a list of strings.",
+                )
+            // Absent from an older Dart client: then nothing optional is
+            // collected.
+            val optional = call.argument<List<String>>("optional_probes") ?: emptyList()
+            val enabled = call.argument<List<String>>("enabled_measurements")?.toSet() ?: emptySet()
+            integrityProbes.collect(required, nonce, optional, enabled)
+        }
 
     private fun onStepUpCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {

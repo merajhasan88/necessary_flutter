@@ -48,6 +48,9 @@ import org.json.JSONObject
  */
 class IntegrityProbeManager(
     private val context: Context,
+    // How the app's screen was touched, for the accessibility measurement;
+    // null where nothing watches it.
+    private val touches: TouchCounts? = null,
     // The visible activity, for the one measurement that needs a window:
     // whether it is being recorded (screen_capture, Android 15 and later).
     private val activity: () -> Activity? = { null },
@@ -74,7 +77,12 @@ class IntegrityProbeManager(
         //      its own; debug_state names the runtime's debugger thread
         //      (jdwp_thread); other_access names the app that handles calls;
         //      emulator reads the processor and the form of the device.
-        private const val COLLECTOR_VERSION = 11
+        // 12 = accessibility names the services that declare themselves tools
+        //      for users with disabilities and those that can perform
+        //      gestures, and counts the touches on the app's screen, those an
+        //      Accessibility service made, and the clicks with no touch
+        //      before them (TouchCounts).
+        private const val COLLECTOR_VERSION = 12
         // Sent with every scan whether or not the server asked: the server
         // tolerates probes beyond its plan but refuses a report missing one it
         // asked for, so a probe new to this collector stays out of the plan and
@@ -408,11 +416,18 @@ class IntegrityProbeManager(
      * Accessibility manager's list is compared with the system setting it is
      * built from: a service the setting names that the manager does not report
      * is hiding, as an Android bug allowed until the December 2022 patch.
+     * Which services declare themselves tools for users with disabilities,
+     * which can perform gestures, and how the app's screen was touched since
+     * the last read (TouchCounts): trojans press an app's buttons themselves.
      */
     private fun probeAccessibility(): Map<String, Any> {
         val manager = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager
             ?: return unavailable("AccessibilityManager is not available")
         val services = mutableListOf<Map<String, Any>>()
+        // Beside the list, by component name, so that a backend that knows
+        // only the entries' four fields takes the report.
+        val tools = mutableListOf<String>()
+        val gestures = mutableListOf<String>()
         val reported = mutableSetOf<String>()
         var undescribed = 0
         for (info in manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)) {
@@ -425,9 +440,19 @@ class IntegrityProbeManager(
                 undescribed++
                 continue
             }
-            if (!reported.add(ComponentName(service.packageName, service.name).flattenToString())) continue
+            val component = ComponentName(service.packageName, service.name).flattenToString()
+            if (!reported.add(component)) continue
             if (services.size < MAX_APPS) {
                 services.add(appEntry(service.packageName, service.name, service.applicationInfo))
+                // The service's own declaration, Android 12 and later: Google
+                // Play allows it only for genuine tools; an app from elsewhere
+                // may declare it falsely.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && info.isAccessibilityTool) {
+                    tools.add(component.take(200))
+                }
+                if (info.capabilities and AccessibilityServiceInfo.CAPABILITY_CAN_PERFORM_GESTURES != 0) {
+                    gestures.add(component.take(200))
+                }
             }
         }
         val hidden = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
@@ -440,9 +465,14 @@ class IntegrityProbeManager(
             "status" to "ok",
             "services" to services,
             "settings_only" to hidden.take(MAX_APPS).map { it.take(200) },
+            "gesture_services" to gestures,
             // More than this collector sends: the server says so, never guesses.
             "truncated" to (reported.size > MAX_APPS || hidden.size > MAX_APPS)
         )
+        // Before Android 12 no service declares it: left out, never an empty list.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) result["tool_services"] = tools
+        // Left out when nothing watched the app's screen since the last read.
+        touches?.take()?.let { result.putAll(it) }
         Settings.Secure.getString(context.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
             ?.let { ComponentName.unflattenFromString(it.trim()) }
             ?.let { result["keyboard"] = appEntry(it.packageName, it.className) }

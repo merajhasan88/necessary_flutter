@@ -161,6 +161,10 @@ class _Store extends InstallationStore {
 
 class _Collector extends NativeIntegrityCollector {
   List<String>? enabled;
+  final List<bool> watched = <bool>[];
+
+  @override
+  Future<void> watchTouches({required bool on}) async => watched.add(on);
 
   @override
   Future<Map<String, dynamic>> collect({
@@ -552,6 +556,20 @@ void main() {
       'mock_location',
     ]);
     expect(scan.reportId, 'report-1');
+  });
+
+  test('start counts the touches from then while the app enables the '
+      'accessibility measurement, and not otherwise', () async {
+    final _Collector off = _Collector();
+    await _trust(_Backend(), collector: off).start();
+    expect(off.watched, isEmpty);
+    final _Collector on = _Collector();
+    await _trust(
+      _Backend(),
+      collector: on,
+      personal: <PersonalMeasurement>{PersonalMeasurement.accessibility},
+    ).start();
+    expect(on.watched, <bool>[true]);
   });
 
   test('the personal measurements change with the app: the next scan '

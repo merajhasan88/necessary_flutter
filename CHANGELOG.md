@@ -4,7 +4,16 @@
   as Apple stores an app it distributes through the App Store or TestFlight. A copy decrypted and installed
   some other way, and a development, ad hoc or enterprise build, keeps it in the clear.
   `doc/measurements.md` says how to read it.
-- The iOS collector is version 9.
+- Android: `accessibility` names the services that declare themselves tools for users with disabilities
+  (`tool_services`, Android 12 and later) and those that can tap and swipe on the screen
+  (`gesture_services`), and says whether a service pressed your app's buttons: with the measurement on
+  when `start()` runs, the plugin counts the touches on your app's screen (`touches`), those an
+  Accessibility service made (`touches_injected`) and the clicks with no touch or key press before them
+  (`clicks_without_touch`), over `counted_seconds`, and each scan that carries the measurement starts
+  them afresh. Counts only: no position, no screen and no text, and nothing is counted while the
+  measurement is off. `doc/measurements.md` says how to read them, and the integration guide's section
+  7.7 who shows them genuinely.
+- The iOS collector is version 9; the Android collector is version 12.
 
 ## 0.1.9
 

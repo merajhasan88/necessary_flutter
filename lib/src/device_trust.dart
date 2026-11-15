@@ -256,6 +256,10 @@ class DeviceTrust {
 
   Future<InstallationIdentity> _start() async {
     final int generation = _generation;
+    // Counted from now while the app enables the accessibility measurement.
+    if (personalMeasurements.contains(PersonalMeasurement.accessibility)) {
+      await _collector.watchTouches(on: true);
+    }
     await loadIdentity();
     await _register(generation);
     await prove();

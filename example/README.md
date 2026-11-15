@@ -138,7 +138,7 @@ measurement's row, and change it back afterwards.
 | `screen_capture` | start the screen recorder (Android 15 and later; on iOS from Control Center); connect an external display | `recording` true; `external_displays` 1 |
 | `location` | tap **Ask for the location permission** and allow it | the `permission`, the coordinates and their `age_seconds` |
 | `mock_location` | Android: Developer options → Select mock location app, and run a mock-location app; iOS: simulate a location from Xcode while the app runs from it | `mock` true |
-| `accessibility` (Android) | Settings → Accessibility → turn on a service such as Select to Speak; or choose another keyboard | the service in `services`; the keyboard in `keyboard` |
+| `accessibility` (Android) | Settings → Accessibility → turn on a service such as Select to Speak; or choose another keyboard; or turn on a service that presses buttons, such as Switch Access or Voice Access, and press **Scan** with it | the service in `services`; the keyboard in `keyboard`; `clicks_without_touch` or `touches_injected` 1 or more, and the service in `tool_services` where it declares itself a tool (Android 12 and later) |
 | `notification_access` (Android) | Settings → Notification access (under Special app access) → allow an app | the app in `listeners` |
 | `other_access` (Android) | install AnyDesk, TeamViewer QuickSupport, RustDesk or AirDroid; or make an app a device administrator | the app in `remote_access_apps`; in `device_admins` |
 | `app_identity` | install a build of the example made with other code | other hashes; a debug build reads `debuggable` true |

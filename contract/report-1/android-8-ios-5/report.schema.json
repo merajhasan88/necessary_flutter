@@ -1494,6 +1494,54 @@
         },
         "truncated": {
           "type": "boolean"
+        },
+        "tool_services": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": "the listed services that declare themselves tools for users with disabilities, by component name: the service's own claim; left out before Android 12"
+        },
+        "gesture_services": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": "the listed services that can perform gestures, tapping and swiping on the screen, by component name"
+        },
+        "touches": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "count",
+          "description": "the touches on the app's screen since the last read; the counts are left out when nothing watched it"
+        },
+        "touches_injected": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "count",
+          "description": "of those, the touches an Accessibility service made: no finger, stylus or mouse behind them, and from Android 12 marked by Android as a service's; before Android 12 also the input adb or root sends"
+        },
+        "clicks_without_touch": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "count",
+          "description": "the clicks the app's screen reported to Accessibility with no touch or key in the two seconds before them: clicks a service performed; left out when they were not watched"
+        },
+        "counted_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740992,
+          "x-unit": "seconds",
+          "description": "the seconds the app's screen was watched for the counts"
         }
       },
       "additionalProperties": true,

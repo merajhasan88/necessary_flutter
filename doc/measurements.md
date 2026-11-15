@@ -459,6 +459,15 @@ person types. The Accessibility manager's list is compared with the system setti
 service the setting names that the manager does not report was hiding, as an Android bug allowed until
 the December 2022 security patch.
 
+From Android collector 12 it also says which services can press your app's buttons, and whether any did.
+A service that can perform gestures taps and swipes on the screen, and one that reads the screen can click
+a button itself: banking trojans move money that way. From the time the SDK starts with this measurement
+turned on, it counts how your app's screen is touched, and sends the counts with the next scan that
+carries this measurement; each such scan starts them afresh. A touch a service makes comes from no finger,
+stylus or mouse, and from Android 12 Android also marks it as a service's. A click a service performs
+makes no touch at all, and Android reports clicks only while an Accessibility service is on. Counts only:
+no position, no screen and no text.
+
 **When:** your backend asks for it and your app enables it — a personal measurement.
 
 | Field | Type | Needed | Meaning |
@@ -467,6 +476,16 @@ the December 2022 security patch.
 | `settings_only` | list | yes | services the system setting names that the Accessibility manager does not report, as component names |
 | `truncated` | true/false | yes, false | the phone had more than the 32 a list holds |
 | `keyboard` | an app |  | the keyboard in use — the default input method — with its `service` |
+| `tool_services` | list |  | the listed services that declare themselves tools for users with disabilities, as component names: the service's own claim, which Google Play allows only for genuine tools and an app installed from elsewhere can make falsely; left out before Android 12 (Android collector 12) |
+| `gesture_services` | list |  | the listed services that can perform gestures, tapping and swiping on the screen, as component names (Android collector 12) |
+| `touches` | integer, count |  | the touches on your app's screen since the last scan that carried this measurement (Android collector 12) |
+| `touches_injected` | integer, count |  | of those, the touches an Accessibility service made; before Android 12 also the touches sent through adb or with root, which come from no finger either |
+| `clicks_without_touch` | integer, count |  | the clicks your app's screen reported with no touch or key press in the two seconds before them: clicks a service performed |
+| `counted_seconds` | integer, seconds |  | how long the SDK watched your app's screen for these counts |
+
+The counts are left out when the SDK watched no screen of your app's since the last scan that carried
+them, as in a scan made before the app showed one; `clicks_without_touch` alone is left out when the SDK
+could not watch the clicks. The counts are your app's screen's: a touch in another app is not seen.
 
 ### `notification_access`
 

@@ -18,7 +18,12 @@ const int reportByteLimit = 65536;
 /// `truncated` flag that says the phone had more (the measurement contract,
 /// section 6).
 const Map<String, List<String>> shortenableLists = <String, List<String>>{
-  'accessibility': <String>['services', 'settings_only'],
+  'accessibility': <String>[
+    'services',
+    'settings_only',
+    'tool_services',
+    'gesture_services',
+  ],
   'notification_access': <String>['listeners'],
   'other_access': <String>['device_admins', 'remote_access_apps'],
 };
