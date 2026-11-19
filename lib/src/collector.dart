@@ -4,6 +4,7 @@ library;
 
 import 'package:flutter/services.dart';
 
+import 'assisted_taps.dart';
 import 'errors.dart';
 
 class NativeIntegrityCollector {
@@ -18,6 +19,9 @@ class NativeIntegrityCollector {
     required List<String> enabledMeasurements,
     List<String> optionalProbes = const <String>[],
   }) async {
+    // The taps an assistive service asks the app's widgets for, watched as
+    // the touches are (Android).
+    AssistedTaps.watch(on: enabledMeasurements.contains('accessibility'));
     try {
       final Map<String, dynamic>? value = await _channel
           .invokeMapMethod<String, dynamic>('collect', <String, dynamic>{
@@ -27,6 +31,9 @@ class NativeIntegrityCollector {
             // collector measures only what is in both.
             'optional_probes': optionalProbes,
             'enabled_measurements': enabledMeasurements,
+            // A tap that could not be told to the plugin: this scan's clicks
+            // are left out.
+            'clicks_lost': AssistedTaps.takeLost(),
           });
       if (value == null) {
         throw NativeKeyException(
@@ -54,6 +61,7 @@ class NativeIntegrityCollector {
   /// from then, not from the first scan; every scan does the same with what
   /// the app enables at the time. Stopped, what was counted is dropped.
   Future<void> watchTouches({required bool on}) async {
+    AssistedTaps.watch(on: on);
     try {
       await _channel.invokeMethod<void>('watchTouches', <String, dynamic>{
         'on': on,

@@ -1,3 +1,15 @@
+## 0.1.11
+
+- Android: `accessibility` counts a click an assistive service performs on any of your widgets, whether or
+  not the widget tells Android of it: Flutter tells Android of a click only for widgets that send tap
+  feedback (Material's ink, switches and checkboxes, Cupertino's buttons), and the plugin also hears of
+  every tap and long press a service asks your app for. Each click counts once, however it is told.
+- Android: `other_access` names the default SMS app (`sms_app`), whose installer and system flag tell an app
+  the person chose from one that made itself the SMS app to read one-time codes.
+- `doc/measurements.md` and the integration guide say what the new readings showed on devices, which clicks
+  a screen reports, and, in section 7.7, who shows the new readings genuinely.
+- The Android collector is version 13.
+
 ## 0.1.10
 
 - iOS: `app_identity` says whether the app's main executable is stored encrypted (`executable_encrypted`),

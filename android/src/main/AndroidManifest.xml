@@ -35,6 +35,12 @@
         <intent>
             <action android:name="android.intent.action.DIAL"/>
         </intent>
+        <!-- The apps that can be the SMS app, so other_access can read who
+             installed the one that is. -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO"/>
+            <data android:scheme="smsto"/>
+        </intent>
         <!-- Remote-control apps scammers have victims install; the same list as
              IntegrityProbeManager.remoteAccessPackages. -->
         <package android:name="com.anydesk.anydeskandroid"/>

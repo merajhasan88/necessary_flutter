@@ -155,12 +155,20 @@ class NecessaryPlugin :
                 // On the main thread, before the scan: the touches are watched
                 // while the app enables the accessibility measurement.
                 watchTouches(call.argument<List<String>>("enabled_measurements")?.contains("accessibility") == true)
+                // A tap Dart could not report: the clicks of this scan are left out.
+                if (call.argument<Boolean>("clicks_lost") == true) touchCounts.clicksLost()
                 collect(call, result)
             }
             // From start(), so that an app that enables the measurement counts
             // from then, not from its first scan.
             "watchTouches" -> {
                 watchTouches(call.argument<Boolean>("on") == true)
+                result.success(null)
+            }
+            // A tap or long press an assistive service asked a widget to perform,
+            // which Dart sees and the screen may not report (collector 13).
+            "clickPerformed" -> {
+                touchCounts.onPerformedClick()
                 result.success(null)
             }
             // For the location and mock_location measurements: asks the person

@@ -2,8 +2,8 @@ package com.meraj.necessary
 
 /**
  * How the app's screen was touched since the accessibility measurement last read it (Android
- * collector 12): the touches, those an Accessibility service made, and the clicks the screen
- * reported to Accessibility with no touch or key before them, which a service performed itself.
+ * collectors 12 and 13): the touches, those an Accessibility service made, and the clicks a service
+ * performed itself.
  * Counts only: no position, no view and no text is kept, and nothing is counted unless the app
  * enabled the accessibility measurement.
  *
@@ -13,14 +13,21 @@ package com.meraj.necessary
  * required there; on Android 12 to 15 the mark alone is not enough, as Android also puts it on a
  * finger's touches while a service that can perform gestures is on. Before Android 12 the tool
  * alone tells, and it also counts the touches adb or root sends through Android's input command,
- * which there come from no tool either. A click a service performs on a view makes no touch at
- * all: the screen still reports the click to Accessibility.
+ * which there come from no tool either.
+ *
+ * A click a service performs makes no touch at all. Android's views report it to Accessibility
+ * after the click, a Flutter screen only for widgets that send tap feedback; and a Flutter screen
+ * hands every tap a service asks for to Dart, which tells the plugin (collector 13). One click can
+ * arrive both ways, in either order: within a second, the two are one.
  */
 class TouchCounts(private val sdkInt: Int, private val clock: () -> Long) {
     private var touches = 0
     private var injected = 0
     private var untouchedClicks = 0
     private var lastInput: Long? = null
+    // The clicks counted from one signal, waiting for the other (each a time).
+    private val performedUnpaired = ArrayDeque<Long>()
+    private val reportedUnpaired = ArrayDeque<Long>()
     private var watchingSince: Long? = null
     private var watchedMs = 0L
     private var watched = false
@@ -48,6 +55,8 @@ class TouchCounts(private val sdkInt: Int, private val clock: () -> Long) {
     @Synchronized
     fun discard() {
         reset()
+        performedUnpaired.clear()
+        reportedUnpaired.clear()
         watchedMs = 0
         watched = watchingSince != null
         if (watched) watchingSince = clock()
@@ -74,8 +83,44 @@ class TouchCounts(private val sdkInt: Int, private val clock: () -> Long) {
     /** A click the app's screen reported to Accessibility. */
     @Synchronized
     fun onClick() {
+        val now = clock()
+        prune(now)
+        // The report of a click a service performed, counted when it was asked for.
+        if (performedUnpaired.isNotEmpty()) {
+            performedUnpaired.removeFirst()
+            return
+        }
         val last = lastInput
-        if (last == null || clock() - last > CLICK_AFTER_INPUT_MS) untouchedClicks++
+        if (last == null || now - last > CLICK_AFTER_INPUT_MS) {
+            untouchedClicks++
+            reportedUnpaired.addLast(now)
+        }
+    }
+
+    /** A tap or long press an assistive service asked the app's own widgets to perform. */
+    @Synchronized
+    fun onPerformedClick() {
+        if (watchingSince == null) return
+        val now = clock()
+        prune(now)
+        // Its report came first and was counted.
+        if (reportedUnpaired.isNotEmpty()) {
+            reportedUnpaired.removeFirst()
+            return
+        }
+        untouchedClicks++
+        performedUnpaired.addLast(now)
+    }
+
+    /** A performed click the plugin could not be told of: the clicks are left out this time. */
+    @Synchronized
+    fun clicksLost() {
+        if (watched) clicksMissed = true
+    }
+
+    private fun prune(now: Long) {
+        while (performedUnpaired.isNotEmpty() && now - performedUnpaired.first() > PAIR_MS) performedUnpaired.removeFirst()
+        while (reportedUnpaired.isNotEmpty() && now - reportedUnpaired.first() > PAIR_MS) reportedUnpaired.removeFirst()
     }
 
     /**
@@ -117,5 +162,7 @@ class TouchCounts(private val sdkInt: Int, private val clock: () -> Long) {
         const val MARKED_FROM_SDK = 31
         /** A click within this long after a touch or a key is theirs. */
         const val CLICK_AFTER_INPUT_MS = 2000L
+        /** A performed click and its report this close together are one click. */
+        const val PAIR_MS = 1000L
     }
 }

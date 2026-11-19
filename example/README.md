@@ -140,7 +140,7 @@ measurement's row, and change it back afterwards.
 | `mock_location` | Android: Developer options → Select mock location app, and run a mock-location app; iOS: simulate a location from Xcode while the app runs from it | `mock` true |
 | `accessibility` (Android) | Settings → Accessibility → turn on a service such as Select to Speak; or choose another keyboard; or turn on a service that presses buttons, such as Switch Access or Voice Access, and press **Scan** with it | the service in `services`; the keyboard in `keyboard`; `clicks_without_touch` or `touches_injected` 1 or more, and the service in `tool_services` where it declares itself a tool (Android 12 and later) |
 | `notification_access` (Android) | Settings → Notification access (under Special app access) → allow an app | the app in `listeners` |
-| `other_access` (Android) | install AnyDesk, TeamViewer QuickSupport, RustDesk or AirDroid; or make an app a device administrator | the app in `remote_access_apps`; in `device_admins` |
+| `other_access` (Android) | install AnyDesk, TeamViewer QuickSupport, RustDesk or AirDroid; or make an app a device administrator; or choose another call or SMS app (Settings → Apps → Default apps) | the app in `remote_access_apps`; in `device_admins`; in `call_app` or `sms_app` |
 | `app_identity` | install a build of the example made with other code | other hashes; a debug build reads `debuggable` true |
 | `debug_state` (Android) | in Android Studio, Run → Attach Debugger to Android Process, on a debug build | `debugger_connected` true |
 | `code_signing` (iOS) | run a development build from Xcode | `get_task_allow` true |

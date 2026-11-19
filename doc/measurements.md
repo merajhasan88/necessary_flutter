@@ -57,8 +57,8 @@ false*, present and false; empty, sent when the SDK has it.
 
 ## Apps in a list
 
-An app in `services`, `keyboard`, `listeners`, `device_admins`, `remote_access_apps` or `call_app`
-(Android) is an object: `package`, its package name; `service`, the component the list is about, where there is one;
+An app in `services`, `keyboard`, `listeners`, `device_admins`, `remote_access_apps`, `call_app` or
+`sms_app` (Android) is an object: `package`, its package name; `service`, the component the list is about, where there is one;
 `system`, true for an app that is part of the phone's system; and `installer`, the package that installed
 it, empty for none. `system` and `installer` are left out where Android hides the app from this one —
 unknown, never evidence. A list holds at most 32 apps, and `truncated` is true when the phone had more.
@@ -480,17 +480,23 @@ no position, no screen and no text.
 | `gesture_services` | list |  | the listed services that can perform gestures, tapping and swiping on the screen, as component names (Android collector 12) |
 | `touches` | integer, count |  | the touches on your app's screen since the last scan that carried this measurement (Android collector 12) |
 | `touches_injected` | integer, count |  | of those, the touches an Accessibility service made; before Android 12 also the touches sent through adb or with root, which come from no finger either |
-| `clicks_without_touch` | integer, count |  | the clicks your app's screen reported with no touch or key press in the two seconds before them: clicks a service performed |
+| `clicks_without_touch` | integer, count |  | the clicks a service performed: those your app's screen reported with no touch or key press in the two seconds before them, and, where the SDK sees them, those a service asked your app's own interface for, each click counted once |
 | `counted_seconds` | integer, seconds |  | how long the SDK watched your app's screen for these counts |
 
 The counts are left out when the SDK watched no screen of your app's since the last scan that carried
 them, as in a scan made before the app showed one; `clicks_without_touch` alone is left out when the SDK
 could not watch the clicks. The counts are your app's screen's: a touch in another app is not seen.
 
+Which clicks a screen reports depends on how it is drawn. Android's own views report a click after your
+app has acted on it, and none for a button your app took off the screen in that time; a screen that a
+framework draws itself reports what that framework does. An SDK that also sees the clicks a service asks
+your app's interface for counts those whatever the screen reports: Your SDK's README says which clicks it
+sees.
+
 **As measured**, on Android 10 and Android 16 with a service switched on that can perform gestures and
-read the screen: each tap the service made counted in `touches_injected`, and each click it performed in
-`clicks_without_touch`, also when the click pressed the button that started the scan, which then carried
-it. A finger's touch counted in `touches` only, and a button pressed from a keyboard, which makes a click
+read the screen: each tap the service made counted in `touches_injected`, and each click it performed on a
+button that reports its clicks counted in `clicks_without_touch`, also when the click pressed the button
+that started the scan, which then carried it. A finger's touch counted in `touches` only, and a button pressed from a keyboard, which makes a click
 with no touch, counted in neither. On Android 10 taps sent through adb counted in `touches_injected`, as
 the table says; on Android 16 they did not. Android 12 to 15 also mark a finger's touches as a service's
 while a service that can perform gestures is on, which is why a touch counts as a service's only when no
@@ -511,11 +517,12 @@ Every app allowed to read the phone's notifications — one-time codes among the
 
 The device-administrator apps that are active, which of four known remote-control apps are
 installed: AnyDesk, TeamViewer QuickSupport, RustDesk and AirDroid — a list compiled into the SDK,
-which Android lets an app check without seeing other apps — and the app that handles calls. Malware
-that makes itself the call app can send a call meant for your number to someone else: A call app that
-is not part of the phone's system and that no app store installed is a strong sign of it. Genuine users
-show it too, with a call app they chose: one installed from a website or a computer names no store, and one
-from another store names that store as its `installer`. The integration guide, section 7.7, says what to
+which Android lets an app check without seeing other apps — and the apps that handle calls and texts.
+Malware that makes itself the call app can send a call meant for your number to someone else, and malware
+that makes itself the SMS app reads and deletes the one-time codes you send: A call or SMS app that is not
+part of the phone's system and that no app store installed is a strong sign of it. Genuine users show it
+too, with an app they chose: one installed from a website or a computer names no store, and one from
+another store names that store as its `installer`. The integration guide, section 7.7, says what to
 do.
 
 **When:** your backend asks for it and your app enables it — a personal measurement.
@@ -526,6 +533,7 @@ do.
 | `remote_access_apps` | list of apps | yes | the remote-control apps installed, of the four |
 | `truncated` | true/false | yes, false | the phone had more device administrators than the 32 a list holds |
 | `call_app` | an app |  | the app that handles calls, left out where the phone names none (Android collector 11) |
+| `sms_app` | an app |  | the default SMS app, left out where the phone names none (Android collector 13) |
 
 ### `screen_capture`
 

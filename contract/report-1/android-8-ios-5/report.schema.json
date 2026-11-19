@@ -1534,7 +1534,7 @@
           "minimum": 0,
           "maximum": 9007199254740992,
           "x-unit": "count",
-          "description": "the clicks the app's screen reported to Accessibility with no touch or key in the two seconds before them: clicks a service performed; left out when they were not watched"
+          "description": "the clicks a service performed: those the app's screen reported to Accessibility with no touch or key press in the two seconds before them, and, where the SDK sees them, those a service asked the app's own interface for, each click counted once; left out when they were not watched"
         },
         "counted_seconds": {
           "type": "integer",
@@ -1644,6 +1644,9 @@
           "type": "boolean"
         },
         "call_app": {
+          "$ref": "#/$defs/app_entry"
+        },
+        "sms_app": {
           "$ref": "#/$defs/app_entry"
         }
       },

@@ -108,6 +108,62 @@ class TouchCountsTest {
     }
 
     @Test
+    fun aPerformedClickAndItsReportAreOneClickInEitherOrder() {
+        val counts = counts()
+        counts.watchStarted(clicks = true)
+        counts.onPerformedClick()   // a Material button: Dart first, then its report
+        now += 50
+        counts.onClick()
+        now += 3_000
+        counts.onClick()            // a Cupertino button reports first...
+        now += 50
+        counts.onPerformedClick()   // ...and Dart's word comes after
+        now += 3_000
+        counts.onPerformedClick()   // a widget that reports nothing
+        now += 3_000
+        assertEquals(3, counts.take()!!["clicks_without_touch"])
+    }
+
+    @Test
+    fun aPerformedClickJustAfterAFingerIsStillOne() {
+        val counts = counts()
+        counts.watchStarted(clicks = true)
+        tap(counts, 0, finger)
+        now += 500
+        counts.onPerformedClick()
+        now += 50
+        counts.onClick()            // its report, within 2 s of the finger
+        assertEquals(1, counts.take()!!["clicks_without_touch"])
+        // A finger's own tap and its report: none.
+        tap(counts, 0, finger)
+        now += 100
+        counts.onClick()
+        assertEquals(0, counts.take()!!["clicks_without_touch"])
+    }
+
+    @Test
+    fun aReportLongAfterAPerformedClickIsAnotherClick() {
+        val counts = counts()
+        counts.watchStarted(clicks = true)
+        counts.onPerformedClick()
+        now += TouchCounts.PAIR_MS + 1
+        counts.onClick()
+        assertEquals(2, counts.take()!!["clicks_without_touch"])
+    }
+
+    @Test
+    fun aLostPerformedClickLeavesTheClicksOut() {
+        val counts = counts()
+        counts.watchStarted(clicks = true)
+        counts.clicksLost()
+        assertFalse(counts.take()!!.containsKey("clicks_without_touch"))
+        // Not watched: a performed click counts nothing.
+        val idle = counts()
+        idle.onPerformedClick()
+        assertNull(idle.take())
+    }
+
+    @Test
     fun discardDropsWhatWasCounted() {
         val counts = counts()
         counts.watchStarted(clicks = true)

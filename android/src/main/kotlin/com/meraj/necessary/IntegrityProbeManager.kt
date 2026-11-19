@@ -18,6 +18,7 @@ import android.os.Build
 import android.os.Debug
 import android.os.SystemClock
 import android.provider.Settings
+import android.provider.Telephony
 import android.telecom.TelecomManager
 import android.view.Display
 import android.view.WindowManager
@@ -82,7 +83,9 @@ class IntegrityProbeManager(
         //      gestures, and counts the touches on the app's screen, those an
         //      Accessibility service made, and the clicks with no touch
         //      before them (TouchCounts).
-        private const val COLLECTOR_VERSION = 12
+        // 13 = other_access names the default SMS app; accessibility counts
+        //      the taps an assistive service asked Flutter's widgets for.
+        private const val COLLECTOR_VERSION = 13
         // Sent with every scan whether or not the server asked: the server
         // tolerates probes beyond its plan but refuses a report missing one it
         // asked for, so a probe new to this collector stays out of the plan and
@@ -518,6 +521,7 @@ class IntegrityProbeManager(
             "remote_access_apps" to remote,
             "truncated" to (active.size > MAX_APPS)
         )
+        val unread = linkedMapOf<String, String>()
         // The app that handles calls (collector 11): malware that makes itself
         // the call app can send a call meant for a bank to someone else. Left
         // out where the phone names none.
@@ -526,8 +530,18 @@ class IntegrityProbeManager(
                 ?.defaultDialerPackage
                 ?.let { result["call_app"] = appEntry(it) }
         } catch (error: Throwable) {
-            result["unread"] = mapOf("call_app" to ProbeReads.why(error))
+            unread["call_app"] = ProbeReads.why(error)
         }
+        // The default SMS app (collector 13): malware that makes itself the
+        // SMS app reads and deletes the bank's one-time codes. The manifest's
+        // <queries> names SENDTO smsto, so Android shows the app who it is.
+        // Left out where the phone names none.
+        try {
+            Telephony.Sms.getDefaultSmsPackage(context)?.let { result["sms_app"] = appEntry(it) }
+        } catch (error: Throwable) {
+            unread["sms_app"] = ProbeReads.why(error)
+        }
+        if (unread.isNotEmpty()) result["unread"] = unread
         return result
     }
 
